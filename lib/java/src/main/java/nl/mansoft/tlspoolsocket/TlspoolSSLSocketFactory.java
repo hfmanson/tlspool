@@ -30,7 +30,7 @@ public class TlspoolSSLSocketFactory extends SSLSocketFactory {
 
     @Override
     public Socket createSocket(Socket socket, String host, int port, boolean autoClose) throws IOException {
-        TlspoolSocket tlspoolSocket = new TlspoolSocket(socket, autoClose);
+        TlspoolSocket tlspoolSocket = new TlspoolSocket(socket, true);
         tlspoolSocket.startTls();
         return tlspoolSocket;
     }
@@ -55,7 +55,7 @@ public class TlspoolSSLSocketFactory extends SSLSocketFactory {
         throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
     }
 
-    public static void main(String[] args) throws Exception {
+    public void test1() throws Exception {
         String host = "localhost";
         int port = 12345;
         Socket socket = new Socket(host, port);
@@ -65,8 +65,12 @@ public class TlspoolSSLSocketFactory extends SSLSocketFactory {
         InputStream is = sslSocket.getInputStream();
         byte[] barr = new byte[10];
         int bytesread = is.read(barr, 0, barr.length);
-        System.out.println("bytes read: " + bytesread + "data: " + new String(barr, 0, bytesread));
+        System.out.println("bytes read: " + bytesread + ", data: " + new String(barr, 0, bytesread));
         sslSocket.close();
         System.out.println("EXITING");
+    }
+
+    public static void main(String[] args) throws Exception {
+        TestSSL.testSSL("https://mansoft.nl:443");
     }
 }
