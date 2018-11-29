@@ -55,7 +55,7 @@ public class TlspoolSSLSocketFactory extends SSLSocketFactory {
         throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
     }
 
-    public void test1() throws Exception {
+    public static void test1() throws Exception {
         String host = "localhost";
         int port = 12345;
         Socket socket = new Socket(host, port);
@@ -71,6 +71,10 @@ public class TlspoolSSLSocketFactory extends SSLSocketFactory {
     }
 
     public static void main(String[] args) throws Exception {
-        TestSSL.testSSL("https://mansoft.nl:443");
+        if (args.length == 0) {
+            test1();
+        } else {
+            TestSSL.testSSL(args[0]);
+        }
     }
 }
