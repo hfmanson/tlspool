@@ -13,10 +13,6 @@ public class TlspoolSocket extends Socket {
 		System.loadLibrary("tlspooljni");
 	}
 
-    private native int startTls0();
-    private native int readEncrypted(byte[] b, int off, int len) throws IOException;
-    private native int writeEncrypted(byte[] b, int off, int len) throws IOException;
-
     private static class PlainOutputStream extends OutputStream {
         private native void writePlain(byte[] b, int off, int len) throws IOException;
         private int fd;
@@ -57,6 +53,11 @@ public class TlspoolSocket extends Socket {
         }
     }
 
+    private native int startTls0();
+    private native int readEncrypted(byte[] b, int off, int len) throws IOException;
+    private native int writeEncrypted(byte[] b, int off, int len) throws IOException;
+
+    private Socket socket;
     private PlainOutputStream pos;
     private PlainInputStream pis;
     private int plainfd;
@@ -64,16 +65,19 @@ public class TlspoolSocket extends Socket {
     private Thread readEncryptedThread;
     private Thread writeEncryptedThread;
 
-    public TlspoolSocket() {
+    public TlspoolSocket(Socket socket) {
         plainfd = -1;
         cryptfd = -1;
+        this.socket = socket;
     }
 
-    public OutputStream getPlainOutputStream() {
+    @Override
+    public OutputStream getOutputStream() {
         return pos;
     }
 
-    public InputStream getPlainInputStream() {
+    @Override
+    public InputStream getInputStream() {
         return pis;
     }
 
@@ -89,7 +93,7 @@ public class TlspoolSocket extends Socket {
                             System.out.println("readEncryptedThread: sleeping for 0.1 second");
                             Thread.sleep(100);
                         } else {
-                            int bytesRead = getInputStream().read(buf);
+                            int bytesRead = socket.getInputStream().read(buf);
                             System.out.println("readEncryptedThread: bytes read from socket: " + bytesRead);
                             if (bytesRead == -1) {
                                 return;
@@ -119,7 +123,7 @@ public class TlspoolSocket extends Socket {
                                 return;
                             }
                             System.out.println("writeEncryptedThread, bytes read: " + bytesRead + ", sending to socket");
-                            getOutputStream().write(buf, 0, bytesRead);
+                            socket.getOutputStream().write(buf, 0, bytesRead);
                         }
                     } catch (Exception ex) {
                         Logger.getLogger(TlspoolSocket.class.getName()).log(Level.SEVERE, null, ex);
@@ -146,11 +150,11 @@ public class TlspoolSocket extends Socket {
     }
 
     public static void main(String[] args) throws Exception {
-        TlspoolSocket tlspoolSocket = new TlspoolSocket();
-        tlspoolSocket.connect(new InetSocketAddress("localhost", 12345));
+        Socket socket = new Socket("localhost", 12345);
+        TlspoolSocket tlspoolSocket = new TlspoolSocket(socket);
         tlspoolSocket.startTls();
-        tlspoolSocket.getPlainOutputStream().write(new byte[] { 0x48, 0x45, 0x4c, 0x4c, 0x4f, 0x0a  });
-        InputStream is = tlspoolSocket.getPlainInputStream();
+        tlspoolSocket.getOutputStream().write(new byte[] { 0x48, 0x45, 0x4c, 0x4c, 0x4f, 0x0a  });
+        InputStream is = tlspoolSocket.getInputStream();
         byte[] barr = new byte[10];
         is.read(barr, 0, barr.length);
         System.out.println(new String(barr));
