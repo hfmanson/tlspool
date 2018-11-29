@@ -88,7 +88,6 @@ public class TlspoolSocket extends Socket {
         stopTls0();
         try {
             writeEncryptedThread.join();
-Thread.sleep(1000);
             if (autoClose) {
                 socket.close();
                 readEncryptedThread.join();
