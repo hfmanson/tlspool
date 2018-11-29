@@ -62,7 +62,7 @@ public class TlspoolSocket extends SSLSocket {
 
     @Override
     public void setUseClientMode(boolean bln) {
-        System.out.println("setUseClientMode: " + bln);
+        System.err.println("setUseClientMode: " + bln);
     }
 
     @Override
@@ -90,7 +90,7 @@ public class TlspoolSocket extends SSLSocket {
 
     @Override
     public void setEnableSessionCreation(boolean bln) {
-        System.out.println("setEnableSessionCreation: " + bln);
+        System.err.println("setEnableSessionCreation: " + bln);
     }
 
     @Override
@@ -189,13 +189,13 @@ public class TlspoolSocket extends SSLSocket {
                 byte[] buf = new byte[4096];
                 while (true) {
                     try {
-                        System.out.println("readEncryptedThread: cryptfd = " + cryptfd);
+                        System.err.println("readEncryptedThread: cryptfd = " + cryptfd);
                         if (cryptfd == -1) {
-                            System.out.println("readEncryptedThread: sleeping for 0.1 second");
+                            System.err.println("readEncryptedThread: sleeping for 0.1 second");
                             Thread.sleep(100);
                         } else {
                             int bytesRead = socket.getInputStream().read(buf);
-                            System.out.println("readEncryptedThread: bytes read from socket: " + bytesRead);
+                            System.err.println("readEncryptedThread: bytes read from socket: " + bytesRead);
                             if (bytesRead == -1) {
                                 return;
                             }
@@ -203,7 +203,7 @@ public class TlspoolSocket extends SSLSocket {
                         }
                     } catch (Exception ex) {
 //                        Logger.getLogger(TlspoolSocket.class.getName()).log(Level.SEVERE, null, ex);
-                        System.out.println(ex.getMessage());
+                        System.err.println(ex.getMessage());
                         return;
                     }
                 }
@@ -215,16 +215,16 @@ public class TlspoolSocket extends SSLSocket {
                 byte[] buf = new byte[4096];
                 while (true) {
                     try {
-                        System.out.println("writeEncryptedThread: cryptfd = " + cryptfd);
+                        System.err.println("writeEncryptedThread: cryptfd = " + cryptfd);
                         if (cryptfd == -1) {
-                            System.out.println("writeEncryptedThread: sleeping for 0.1 second");
+                            System.err.println("writeEncryptedThread: sleeping for 0.1 second");
                             Thread.sleep(100);
                         } else {
                             int bytesRead = readEncrypted(buf, 0, buf.length);
                             if (bytesRead <= 0) {
                                 return;
                             }
-                            System.out.println("writeEncryptedThread, bytes read: " + bytesRead + ", sending to socket");
+                            System.err.println("writeEncryptedThread, bytes read: " + bytesRead + ", sending to socket");
                             socket.getOutputStream().write(buf, 0, bytesRead);
                         }
                     } catch (Exception ex) {
@@ -237,8 +237,8 @@ public class TlspoolSocket extends SSLSocket {
         readEncryptedThread.start();
         writeEncryptedThread.start();
         startTls0();
-        System.out.println("plainfd: " + plainfd);
-        System.out.println("cryptfd: " + cryptfd);
+        System.err.println("plainfd: " + plainfd);
+        System.err.println("cryptfd: " + cryptfd);
         pos = new PlainOutputStream(plainfd);
         pis = new PlainInputStream(plainfd);
     }

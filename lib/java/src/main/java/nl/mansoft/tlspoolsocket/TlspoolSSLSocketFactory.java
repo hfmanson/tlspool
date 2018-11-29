@@ -73,8 +73,8 @@ public class TlspoolSSLSocketFactory extends SSLSocketFactory {
     public static void main(String[] args) throws Exception {
         if (args.length == 0) {
             test1();
-        } else {
-            TestSSL.testSSL(args[0]);
+        } else if (args.length == 2) {
+            TestSSL.testSSL(args[0], Boolean.parseBoolean(args[1]));
         }
     }
 }

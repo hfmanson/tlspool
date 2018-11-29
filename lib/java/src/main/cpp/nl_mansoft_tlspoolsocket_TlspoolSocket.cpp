@@ -69,19 +69,19 @@ extern "C" {
 		rc = dumb_socketpair(soxx, 1);
 #endif /* WINDOWS_PORT */
 		if (rc == 0) {
-			printf("soxx[0] = %d, soxx[1] = %d\n", soxx[0], soxx[1]);
+			fprintf(stderr, "soxx[0] = %d, soxx[1] = %d\n", soxx[0], soxx[1]);
 			// Get the Field ID of the instance variable "cryptfd"
 			jfieldID fidCryptfd = env->GetFieldID(thisClass, "cryptfd", "I");
 			if (NULL == fidCryptfd) return -1;
-			printf("fidCryptfd = %d\n", fidCryptfd);
+			fprintf(stderr, "fidCryptfd = %d\n", fidCryptfd);
 			// Get the int given the Field ID
 			env->SetIntField(thisObj, fidCryptfd, soxx[0]);
 			rc = tlspool_starttls (soxx[1], &tlsdata_cli, &plainfd, NULL);
-			printf("tlspool_starttls: rc = %d\n", rc);
+			fprintf(stderr, "tlspool_starttls: rc = %d\n", rc);
 			if (rc == 0) {
 				jfieldID fidPlainfd = env->GetFieldID(thisClass, "plainfd", "I");
 				if (NULL == fidPlainfd) return -1;
-                                printf("fidPlainfd = %d\n", fidPlainfd);
+                                fprintf(stderr, "fidPlainfd = %d\n", fidPlainfd);
  				// Get the int given the Field ID
 				env->SetIntField(thisObj, fidPlainfd, plainfd);				
 			} else {
@@ -114,9 +114,9 @@ extern "C" {
 		if (NULL == fidCryptfd) return 0;
 		// Get the int given the Field ID
 		int cryptfd = env->GetIntField(thisObj, fidCryptfd);
-		printf("readEncrypted: cryptfd = %d\n", cryptfd);
+		fprintf(stderr, "readEncrypted: cryptfd = %d\n", cryptfd);
 		int bytesread = read(cryptfd, inCArray + off, len);
-		printf("readEncrypted: bytesread = %d\n", bytesread);
+		fprintf(stderr, "readEncrypted: bytesread = %d\n", bytesread);
 		env->ReleaseByteArrayElements(inJNIArray, inCArray, 0); // release resources
 		return bytesread;
 	}
@@ -139,10 +139,10 @@ extern "C" {
 		if (NULL == fidCryptfd) return 0;
 		// Get the int given the Field ID
 		int cryptfd = env->GetIntField(thisObj, fidCryptfd);
-		printf("writeEncrypted: cryptfd = %d\n", cryptfd);
+		fprintf(stderr, "writeEncrypted: cryptfd = %d\n", cryptfd);
 		int byteswritten = write(cryptfd, inCArray + off, len);
 		env->ReleaseByteArrayElements(inJNIArray, inCArray, 0); // release resources
-		printf("writeEncrypted: byteswritten = %d\n", byteswritten);
+		fprintf(stderr, "writeEncrypted: byteswritten = %d\n", byteswritten);
 		return byteswritten;
 	}
 	/*
@@ -161,7 +161,7 @@ extern "C" {
 		if (NULL == fidPlainfd) return 0;
 		// Get the int given the Field ID
 		int plainfd = env->GetIntField(thisObj, fidPlainfd);
-		printf("stopTls0: plainfd = %d\n", plainfd);
+		fprintf(stderr, "stopTls0: plainfd = %d\n", plainfd);
 		close(plainfd);
 		return 0;
 	}
