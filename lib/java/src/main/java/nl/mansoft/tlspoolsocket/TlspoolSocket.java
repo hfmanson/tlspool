@@ -53,6 +53,7 @@ public class TlspoolSocket extends Socket {
     }
 
     private native int startTls0();
+    private native int stopTls0();
     private native int readEncrypted(byte[] b, int off, int len) throws IOException;
     private native int writeEncrypted(byte[] b, int off, int len) throws IOException;
 
@@ -63,11 +64,13 @@ public class TlspoolSocket extends Socket {
     private int cryptfd;
     private Thread readEncryptedThread;
     private Thread writeEncryptedThread;
+    private boolean autoClose;
 
-    public TlspoolSocket(Socket socket) {
+    public TlspoolSocket(Socket socket, boolean autoClose) {
         plainfd = -1;
         cryptfd = -1;
         this.socket = socket;
+        this.autoClose = autoClose;
     }
 
     @Override
@@ -78,6 +81,20 @@ public class TlspoolSocket extends Socket {
     @Override
     public InputStream getInputStream() {
         return pis;
+    }
+
+    @Override
+    public void close() throws IOException {
+        stopTls0();
+        try {
+            writeEncryptedThread.join();
+Thread.sleep(1000);
+            if (autoClose) {
+                socket.close();
+                readEncryptedThread.join();
+             }
+        } catch (InterruptedException ex) {
+        }
     }
 
     public void startTls() {
@@ -100,7 +117,8 @@ public class TlspoolSocket extends Socket {
                             writeEncrypted(buf, 0, bytesRead);
                         }
                     } catch (Exception ex) {
-                        Logger.getLogger(TlspoolSocket.class.getName()).log(Level.SEVERE, null, ex);
+//                        Logger.getLogger(TlspoolSocket.class.getName()).log(Level.SEVERE, null, ex);
+                        System.out.println(ex.getMessage());
                         return;
                     }
                 }
@@ -138,13 +156,5 @@ public class TlspoolSocket extends Socket {
         System.out.println("cryptfd: " + cryptfd);
         pos = new PlainOutputStream(plainfd);
         pis = new PlainInputStream(plainfd);
-    }
-
-    public void joinReadEncryptedThread() throws InterruptedException {
-        readEncryptedThread.join();
-    }
-
-    public void joinWriteEncryptedThread() throws InterruptedException {
-        writeEncryptedThread.join();
     }
 }

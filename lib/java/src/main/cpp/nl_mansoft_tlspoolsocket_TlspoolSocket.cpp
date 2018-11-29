@@ -145,6 +145,26 @@ extern "C" {
 		printf("writeEncrypted: byteswritten = %d\n", byteswritten);
 		return byteswritten;
 	}
+	/*
+	 * Class:     nl_mansoft_tlspoolsocket_TlspoolSocket
+	 * Method:    stopTls0
+	 * Signature: ()I
+	 */
+	JNIEXPORT jint JNICALL Java_nl_mansoft_tlspoolsocket_TlspoolSocket_stopTls0
+	(JNIEnv *env, jobject thisObj)
+	{
+		// Get a reference to this object's class
+		jclass thisClass = env->GetObjectClass(thisObj);
+
+		// Get the Field ID of the instance variable "cryptfd"
+		jfieldID fidPlainfd = env->GetFieldID(thisClass, "plainfd", "I");
+		if (NULL == fidPlainfd) return 0;
+		// Get the int given the Field ID
+		int plainfd = env->GetIntField(thisObj, fidPlainfd);
+		printf("stopTls0: plainfd = %d\n", plainfd);
+		close(plainfd);
+		return 0;
+	}
 
 #ifdef __cplusplus
 }

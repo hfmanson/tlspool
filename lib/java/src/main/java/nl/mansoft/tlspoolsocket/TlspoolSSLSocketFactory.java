@@ -30,7 +30,7 @@ public class TlspoolSSLSocketFactory extends SSLSocketFactory {
 
     @Override
     public Socket createSocket(Socket socket, String host, int port, boolean autoClose) throws IOException {
-        TlspoolSocket tlspoolSocket = new TlspoolSocket(socket);
+        TlspoolSocket tlspoolSocket = new TlspoolSocket(socket, autoClose);
         tlspoolSocket.startTls();
         return tlspoolSocket;
     }
@@ -64,10 +64,9 @@ public class TlspoolSSLSocketFactory extends SSLSocketFactory {
         sslSocket.getOutputStream().write(new byte[] { 0x48, 0x45, 0x4c, 0x4c, 0x4f, 0x0a  });
         InputStream is = sslSocket.getInputStream();
         byte[] barr = new byte[10];
-        is.read(barr, 0, barr.length);
-        System.out.println(new String(barr));
-        //sslSocket.joinReadEncryptedThread();
-        //sslSocket.joinWriteEncryptedThread();
+        int bytesread = is.read(barr, 0, barr.length);
+        System.out.println("bytes read: " + bytesread + "data: " + new String(barr, 0, bytesread));
+        sslSocket.close();
         System.out.println("EXITING");
     }
 }

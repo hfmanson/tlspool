@@ -24,7 +24,7 @@ $(OBJECTS_DIR)/nl_mansoft_tlspoolsocket_TlspoolSocket_PlainInputStream.o: $(SOUR
 $(OBJECTS_DIR)/nl_mansoft_tlspoolsocket_TlspoolSocket_PlainOutputStream.o: $(SOURCES_DIR)/nl_mansoft_tlspoolsocket_TlspoolSocket_PlainOutputStream.cpp target/TlspoolSocket-1.0-SNAPSHOT.jar
 	$(CC) $(CFLAGS) $< -o $@
 
-$(TARGET_DIR)/TlspoolSocket-1.0-SNAPSHOT.jar: src/main/java/nl/mansoft/tlspoolsocket/TlspoolSocket.java
+$(TARGET_DIR)/TlspoolSocket-1.0-SNAPSHOT.jar: src/main/java/nl/mansoft/tlspoolsocket/TlspoolSocket.java 
 	mvn package
 
 clean:
