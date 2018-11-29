@@ -6,11 +6,97 @@ import java.io.OutputStream;
 import java.net.Socket;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import javax.net.ssl.HandshakeCompletedListener;
+import javax.net.ssl.SSLSession;
+import javax.net.ssl.SSLSocket;
 
-public class TlspoolSocket extends Socket {
+public class TlspoolSocket extends SSLSocket {
 	static {
 		System.loadLibrary("tlspooljni");
 	}
+
+    @Override
+    public String[] getSupportedCipherSuites() {
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    @Override
+    public String[] getEnabledCipherSuites() {
+        return null;
+    }
+
+    @Override
+    public void setEnabledCipherSuites(String[] strings) {
+    }
+
+    @Override
+    public String[] getSupportedProtocols() {
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    @Override
+    public String[] getEnabledProtocols() {
+        return null;
+    }
+
+    @Override
+    public void setEnabledProtocols(String[] strings) {
+    }
+
+    @Override
+    public SSLSession getSession() {
+        return null;
+    }
+
+    @Override
+    public void addHandshakeCompletedListener(HandshakeCompletedListener hl) {
+    }
+
+    @Override
+    public void removeHandshakeCompletedListener(HandshakeCompletedListener hl) {
+    }
+
+    @Override
+    public void startHandshake() throws IOException {
+    }
+
+    @Override
+    public void setUseClientMode(boolean bln) {
+        System.out.println("setUseClientMode: " + bln);
+    }
+
+    @Override
+    public boolean getUseClientMode() {
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    @Override
+    public void setNeedClientAuth(boolean bln) {
+    }
+
+    @Override
+    public boolean getNeedClientAuth() {
+        return false;
+    }
+
+    @Override
+    public void setWantClientAuth(boolean bln) {
+    }
+
+    @Override
+    public boolean getWantClientAuth() {
+        return false;
+    }
+
+    @Override
+    public void setEnableSessionCreation(boolean bln) {
+        System.out.println("setEnableSessionCreation: " + bln);
+    }
+
+    @Override
+    public boolean getEnableSessionCreation() {
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
 
     private static class PlainOutputStream extends OutputStream {
         private native void writePlain(byte[] b, int off, int len) throws IOException;

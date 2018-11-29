@@ -28,7 +28,7 @@ static starttls_t tlsdata_cli = {
         IPPROTO_TCP,
         0,
         "testcli@tlspool.arpa2.lab",
-        "testsrv@tlspool.arpa2.lab"
+        "mansoft.nl"
 };
 
 #endif /* TEST */
