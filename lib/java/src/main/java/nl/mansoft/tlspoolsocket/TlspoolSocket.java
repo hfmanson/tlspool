@@ -3,7 +3,6 @@ package nl.mansoft.tlspoolsocket;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -15,7 +14,7 @@ public class TlspoolSocket extends Socket {
 
     private static class PlainOutputStream extends OutputStream {
         private native void writePlain(byte[] b, int off, int len) throws IOException;
-        private int fd;
+        private final int fd;
 
         public PlainOutputStream(int fd) {
             this.fd = fd;
@@ -35,7 +34,7 @@ public class TlspoolSocket extends Socket {
 
     private static class PlainInputStream extends InputStream {
         private native int readPlain(byte[] b, int off, int len) throws IOException;
-        private int fd;
+        private final int fd;
 
         public PlainInputStream(int fd) {
             this.fd = fd;
@@ -147,19 +146,5 @@ public class TlspoolSocket extends Socket {
 
     public void joinWriteEncryptedThread() throws InterruptedException {
         writeEncryptedThread.join();
-    }
-
-    public static void main(String[] args) throws Exception {
-        Socket socket = new Socket("localhost", 12345);
-        TlspoolSocket tlspoolSocket = new TlspoolSocket(socket);
-        tlspoolSocket.startTls();
-        tlspoolSocket.getOutputStream().write(new byte[] { 0x48, 0x45, 0x4c, 0x4c, 0x4f, 0x0a  });
-        InputStream is = tlspoolSocket.getInputStream();
-        byte[] barr = new byte[10];
-        is.read(barr, 0, barr.length);
-        System.out.println(new String(barr));
-        tlspoolSocket.joinReadEncryptedThread();
-        tlspoolSocket.joinWriteEncryptedThread();
-        System.out.println("EXITING");
     }
 }
