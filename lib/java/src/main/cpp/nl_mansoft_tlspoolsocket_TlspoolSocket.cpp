@@ -162,7 +162,7 @@ extern "C" {
 		// Get the int given the Field ID
 		int plainfd = env->GetIntField(thisObj, fidPlainfd);
 		fprintf(stderr, "stopTls0: plainfd = %d\n", plainfd);
-		close(plainfd);
+		shutdown(plainfd, SHUT_RDWR);
 		return 0;
 	}
 

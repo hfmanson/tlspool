@@ -5,7 +5,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.InputStream;
 import java.net.URL;
-import java.net.URLConnection;
+import java.net.HttpURLConnection;
 import java.security.cert.Certificate;
 import java.util.List;
 import java.util.Map;
@@ -14,14 +14,6 @@ import java.util.logging.Logger;
 import javax.net.ssl.HttpsURLConnection;
 
 public class TestSSL {
-    public static void bufferedReader(InputStream is) throws IOException {
-        BufferedReader in = new BufferedReader(new InputStreamReader(is));
-        String inputLine;
-        while ((inputLine = in.readLine()) != null)
-            System.out.println(inputLine);
-        in.close();
-    }
-
     public static void direct(InputStream is) throws IOException {
         byte[] buf = new byte[1024*1024];
         int bytesread;
@@ -59,7 +51,7 @@ public class TestSSL {
         try {
             System.err.println("Visiting: " + urlString);
             URL url = new URL(urlString);
-            URLConnection urlConnection = url.openConnection();
+            HttpURLConnection urlConnection = (HttpURLConnection) url.openConnection();
             if (urlConnection instanceof HttpsURLConnection) {
                 HttpsURLConnection httpsURLConnection = (HttpsURLConnection) urlConnection;
                 if (useTlspool) {
@@ -69,8 +61,8 @@ public class TestSSL {
             }
             urlConnection.connect();
             printResponseHeaders(urlConnection.getHeaderFields());
-//            bufferedReader(urlConnection.getInputStream());
             direct(urlConnection.getInputStream());
+            urlConnection.disconnect();
         } catch (IOException ex) {
             Logger.getLogger(TestSSL.class.getName()).log(Level.SEVERE, null, ex);
         }

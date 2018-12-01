@@ -171,13 +171,15 @@ public class TlspoolSocket extends SSLSocket {
 
     @Override
     public void close() throws IOException {
-        stopTls0();
         try {
+            stopTls0();
             writeEncryptedThread.join();
+            System.err.println("W joined");
             if (autoClose) {
                 socket.close();
                 readEncryptedThread.join();
-             }
+                System.err.println("R joined");
+            }
         } catch (InterruptedException ex) {
         }
     }
@@ -197,6 +199,7 @@ public class TlspoolSocket extends SSLSocket {
                             int bytesRead = socket.getInputStream().read(buf);
                             System.err.println("readEncryptedThread: bytes read from socket: " + bytesRead);
                             if (bytesRead == -1) {
+                                System.err.println("EXIT: readEncryptedThread");
                                 return;
                             }
                             writeEncrypted(buf, 0, bytesRead);
@@ -222,6 +225,7 @@ public class TlspoolSocket extends SSLSocket {
                         } else {
                             int bytesRead = readEncrypted(buf, 0, buf.length);
                             if (bytesRead <= 0) {
+                                System.err.println("EXIT: writeEncryptedThread");
                                 return;
                             }
                             System.err.println("writeEncryptedThread, bytes read: " + bytesRead + ", sending to socket");
