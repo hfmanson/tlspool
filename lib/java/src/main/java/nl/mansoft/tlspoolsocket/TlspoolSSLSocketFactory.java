@@ -31,7 +31,16 @@ public class TlspoolSSLSocketFactory extends SSLSocketFactory {
     @Override
     public Socket createSocket(Socket socket, String host, int port, boolean autoClose) throws IOException {
         TlspoolSocket tlspoolSocket = new TlspoolSocket(socket, true);
-        tlspoolSocket.startTls();
+        tlspoolSocket.startTls(
+            TlspoolSocket.PIOF_STARTTLS_LOCALROLE_CLIENT | TlspoolSocket.PIOF_STARTTLS_REMOTEROLE_SERVER,
+            0,
+            TlspoolSocket.IPPROTO_TCP,
+            0,
+            "",
+            host,
+            "generic",
+            0
+        );
         return tlspoolSocket;
     }
 

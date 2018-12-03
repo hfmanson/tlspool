@@ -11,9 +11,21 @@ import javax.net.ssl.SSLSession;
 import javax.net.ssl.SSLSocket;
 
 public class TlspoolSocket extends SSLSocket {
-	static {
-		System.loadLibrary("tlspooljni");
-	}
+    public static final int IPPROTO_TCP = 6;
+    public static final int IPPROTO_UDP = 17;
+    public static final int IPPROTO_SCTP = 132;
+
+    public static final int PIOF_STARTTLS_LOCALROLE_CLIENT = 0x01;
+    public static final int PIOF_STARTTLS_LOCALROLE_SERVER = 0x02;
+    public static final int PIOF_STARTTLS_LOCALROLE_PEER = 0x03;
+    public static final int PIOF_STARTTLS_REMOTEROLE_CLIENT = 0x04;
+    public static final int PIOF_STARTTLS_REMOTEROLE_SERVER = 0x08;
+    public static final int PIOF_STARTTLS_REMOTEROLE_PEER = 0x0c;
+    public static final int PIOF_STARTTLS_BOTHROLES_PEER = 0x0f;
+
+    static {
+        System.loadLibrary("tlspooljni");
+    }
 
     @Override
     public String[] getSupportedCipherSuites() {
@@ -138,7 +150,7 @@ public class TlspoolSocket extends SSLSocket {
         }
     }
 
-    private native int startTls0();
+    private native int startTls0(int flags, int local, int ipproto, int streamid, String localid, String remoteid, String service, int timeout);
     private native int stopTls0();
     private native int readEncrypted(byte[] b, int off, int len) throws IOException;
     private native int writeEncrypted(byte[] b, int off, int len) throws IOException;
@@ -184,7 +196,7 @@ public class TlspoolSocket extends SSLSocket {
         }
     }
 
-    public void startTls() {
+    public void startTls(int flags, int local, int ipproto, int streamid, String localid, String remoteid, String service, int timeout) {
         readEncryptedThread = new Thread() {
             @Override
             public void run() {
@@ -240,7 +252,7 @@ public class TlspoolSocket extends SSLSocket {
         };
         readEncryptedThread.start();
         writeEncryptedThread.start();
-        startTls0();
+        startTls0(flags, local, ipproto, streamid, localid, remoteid, service, timeout);
         System.err.println("plainfd: " + plainfd);
         System.err.println("cryptfd: " + cryptfd);
         pos = new PlainOutputStream(plainfd);

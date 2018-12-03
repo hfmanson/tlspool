@@ -1,5 +1,6 @@
 #include <jni.h>
 #include <stdio.h>
+#include <string.h>
 #ifdef _WIN32
 #include <io.h>
 #else
@@ -20,17 +21,6 @@
 #endif /* _WIN32 */
 #else /* TEST */
 #include <tlspool/starttls.h>
-
-static starttls_t tlsdata_cli = {
-        PIOF_STARTTLS_LOCALROLE_CLIENT
-        | PIOF_STARTTLS_REMOTEROLE_SERVER,
-        0,
-        IPPROTO_TCP,
-        0,
-        "testcli@tlspool.arpa2.lab",
-        "mansoft.nl"
-};
-
 #endif /* TEST */
 
 #ifdef __cplusplus
@@ -42,7 +32,7 @@ extern "C" {
 	 * Signature: ()I
 	 */
 	JNIEXPORT jint JNICALL Java_nl_mansoft_tlspoolsocket_TlspoolSocket_startTls0
-	(JNIEnv *env, jobject thisObj)
+        (JNIEnv *env, jobject thisObj, jint flags, jint local, jint ipproto, jint streamid, jstring localid, jstring remoteid, jstring service, jint timeout)
 	{
 		int rc = 0;
 		// Get a reference to this object's class
@@ -76,8 +66,37 @@ extern "C" {
 			fprintf(stderr, "fidCryptfd = %d\n", fidCryptfd);
 			// Get the int given the Field ID
 			env->SetIntField(thisObj, fidCryptfd, soxx[0]);
-			rc = tlspool_starttls (soxx[1], &tlsdata_cli, &plainfd, NULL);
+                        const char *localidCStr = env->GetStringUTFChars(localid, NULL);
+                        if (NULL == localidCStr) return -1;
+                        const char *remoteidCStr = env->GetStringUTFChars(remoteid, NULL);
+                        if (NULL == remoteidCStr) return -1;
+                        const char *serviceCStr = env->GetStringUTFChars(service, NULL);
+                        if (NULL == serviceCStr) return -1;
+                        starttls_t tlsdata = {
+                            flags,
+                            local,
+                            ipproto,
+                            streamid,
+                        };
+                        strcpy(tlsdata.localid, localidCStr);
+                        strcpy(tlsdata.remoteid, remoteidCStr);
+                        strcpy((char *) tlsdata.service, serviceCStr);
+                        tlsdata.timeout = timeout;
+			fprintf(stderr, "tlspool_starttls: flags = %d, localid = %d, ipproto = %d, streamid = %d, localid = %d, remoteid = %d, service = %s, timeout = %d\n",
+                            tlsdata.flags,
+                            tlsdata.local,
+                            tlsdata.ipproto,
+                            tlsdata.streamid,
+                            tlsdata.localid,
+                            tlsdata.remoteid,
+                            (char *) tlsdata.service,
+                            timeout
+                        );
+			rc = tlspool_starttls (soxx[1], &tlsdata, &plainfd, NULL);
 			fprintf(stderr, "tlspool_starttls: rc = %d\n", rc);
+                        env->ReleaseStringUTFChars(localid, localidCStr);
+                        env->ReleaseStringUTFChars(remoteid, remoteidCStr);
+                        env->ReleaseStringUTFChars(service, serviceCStr);
 			if (rc == 0) {
 				jfieldID fidPlainfd = env->GetFieldID(thisClass, "plainfd", "I");
 				if (NULL == fidPlainfd) return -1;
