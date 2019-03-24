@@ -37,7 +37,13 @@ set(tlspool_SRC
 if("${CMAKE_HOST_SYSTEM}" MATCHES ".*Windows.*")
 	set(tlspool_SRC
 		${tlspool_SRC}
+		service_windows.c
 		windows/syslog.c
+	)
+else()
+	set(tlspool_SRC
+		${tlspool_SRC}
+		service_posix.c
 	)
 endif()
 
