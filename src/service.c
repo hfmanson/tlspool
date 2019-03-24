@@ -237,12 +237,10 @@ static void process_command (struct command *cmd);
 PIPEINST Pipe[INSTANCES];
 HANDLE hEvents[INSTANCES];
 
-#if defined(WINDOWS_PORT)
 static int socket_from_protocol_info (LPWSAPROTOCOL_INFOW lpProtocolInfo)
 {
-	return WSASocketW (FROM_PROTOCOL_INFO, FROM_PROTOCOL_INFO, FROM_PROTOCOL_INFO, lpProtocolInfo, 0, 0); 
+	return WSASocketW (FROM_PROTOCOL_INFO, FROM_PROTOCOL_INFO, FROM_PROTOCOL_INFO, lpProtocolInfo, 0, 0);
 }
-#endif
 
 static int create_named_pipes (LPCTSTR lpszPipename)
 {
@@ -504,12 +502,25 @@ BOOL ConnectToNewClient(HANDLE hPipe, LPOVERLAPPED lpo)
    }
    return fPendingIO;
 }
+#endif /* WINDOWS_PORT */
 
-static int np_send_command(struct tlspool_command *cmd) {
+int send_command (struct command *cmd, int passfd) {
+	int rc;
+
+	if (cmd == NULL) {
+		return 1;	// Success guaranteed when nobody is listening
+	}
+	assert (passfd == -1);	// Working passfd code retained but not used
+#ifdef WINDOWS_PORT
 	DWORD  cbToWrite, cbWritten;
 	OVERLAPPED overlapped;
 	BOOL fSuccess;
+	struct tlspool_command *t_cmd = &cmd->cmd;
 
+	t_cmd->pio_ancil_type = ANCIL_TYPE_NONE;
+	memset (&t_cmd->pio_ancil_data,
+			0,
+			sizeof (t_cmd->pio_ancil_data));
 	/* Send the request */
 	// Send a message to the pipe server.
 
@@ -520,8 +531,8 @@ static int np_send_command(struct tlspool_command *cmd) {
 	overlapped.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 
 	fSuccess = WriteFile(
-		cmd->hPipe,                  // pipe handle
-		cmd,                    // cmd message
+		t_cmd->hPipe,                  // pipe handle
+		t_cmd,                    // cmd message
 		cbToWrite,              // cmd message length
 		NULL,                  // bytes written
 		&overlapped);            // overlapped
@@ -533,39 +544,24 @@ printf ("DEBUG: Write I/O pending\n");
 	}
 
 	if (fSuccess) {
-		fSuccess = GetOverlappedResult(cmd->hPipe, &overlapped, &cbWritten, TRUE);
+		fSuccess = GetOverlappedResult(t_cmd->hPipe, &overlapped, &cbWritten, TRUE);
 	}
 
 	if (!fSuccess)
 	{
 		_tprintf(TEXT("WriteFile to pipe failed. GLE=%d\n"), GetLastError());
 		errno = EPIPE;
-		return -1;
+		rc = 0;
 	} else {
 printf ("DEBUG: Wrote %ld bytes to pipe\n", cbWritten);
+		rc = 1;
 	}
-printf("DEBUG: Message sent to server, receiving reply as follows:\n");
-	return 0;
-}
-#endif /* WINDOWS_PORT */
-
-int send_command (struct command *cmd, int passfd) {
-#ifdef WINDOWS_PORT
-	cmd->cmd.pio_ancil_type = ANCIL_TYPE_NONE;
-	memset (&cmd->cmd.pio_ancil_data,
-			0,
-			sizeof (cmd->cmd.pio_ancil_data));
-	return !np_send_command(&cmd->cmd) ? 1 : 0;
 #else /* WINDOWS_PORT */
 	char anc [CMSG_SPACE(sizeof (int))];
 	struct iovec iov;
 	struct msghdr mh;
 	struct cmsghdr *cmsg;
 
-	if (cmd == NULL) {
-		return 1;	// Success guaranteed when nobody is listening
-	}
-	assert (passfd == -1);	// Working passfd code retained but not used
 	memset (anc, 0, sizeof (anc));
 	memset (&iov, 0, sizeof (iov));
 	memset (&mh, 0, sizeof (mh));
@@ -586,14 +582,14 @@ int send_command (struct command *cmd, int passfd) {
 	if (sendmsg (cmd->clientfd, &mh, MSG_NOSIGNAL) == -1) {
 		//TODO// Differentiate behaviour based on errno?
 		perror ("Failed to send command");
-		cmd->claimed = 0;
-		return 0;
+		rc = 0;
 	} else {
 		tlog (TLOG_UNIXSOCK, LOG_DEBUG, "Sent command code 0x%08x", cmd->cmd.pio_cmd);
-		cmd->claimed = 0;
-		return 1;
+		rc = 1;
 	}
 #endif /* WINDOWS_PORT */
+	cmd->claimed = 0;
+	return rc;
 }
 
 /* Report success to the user.  Note that this function does not terminate
