@@ -31,7 +31,9 @@ set_target_properties(tlspool_static PROPERTIES
     OUTPUT_NAME tlspool
 )
 
-target_link_libraries(tlspool_shared -lwsock32 -lws2_32)
+if("${CMAKE_HOST_SYSTEM}" MATCHES ".*Windows.*")
+	target_link_libraries(tlspool_shared -lwsock32 -lws2_32)
+endif()
 
 install(
     TARGETS tlspool_shared

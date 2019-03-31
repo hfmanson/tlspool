@@ -30,7 +30,14 @@ endforeach()
 ### Online check
 #
 #
-add_executable(onlinecheck onlinecheck.c ../src/config.c ../src/pgp.c)
+set(onlinecheck_SRC onlinecheck.c ../src/config.c ../src/pgp.c)
+if("${CMAKE_HOST_SYSTEM}" MATCHES ".*Windows.*")
+	set(onlinecheck_SRC ${onlinecheck_SRC} ../src/config_windows.c)
+else()
+	set(onlinecheck_SRC ${onlinecheck_SRC} ../src/config_posix.c)
+endif()
+
+add_executable(onlinecheck ${onlinecheck_SRC})
 add_dependencies(onlinecheck src-onlinecheck)
 target_compile_definitions(onlinecheck PUBLIC -DCONFIG_PARSE_ONLY)
 target_include_directories(onlinecheck PUBLIC
