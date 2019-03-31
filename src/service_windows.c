@@ -8,26 +8,13 @@
 #include <pthread.h>
 #include <assert.h>
 
-#ifndef WINDOWS_PORT
-#include <unistd.h>
-#endif /* WINDOWS_PORT */
-
 #include <syslog.h>
 #include <fcntl.h>
 
 #include <tlspool/commands.h>
 #include <tlspool/internal.h>
 
-#ifdef WINDOWS_PORT
 #include <winsock2.h>
-#else
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <poll.h>
-#endif
-
-#ifdef WINDOWS_PORT
 #include <windows.h>
 #ifndef __MINGW64__
 #define WEOF ((wint_t)(0xFFFF))
@@ -38,7 +25,6 @@
 
 #define _tprintf printf
 #define _tmain main
-#endif /* WINDOWS_PORT */
 
 #include "service.h"
 
