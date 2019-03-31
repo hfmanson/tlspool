@@ -63,6 +63,7 @@ target_link_libraries(tlspool
 
 if("${CMAKE_HOST_SYSTEM}" MATCHES ".*Windows.*")
 	add_compile_definitions(_WIN32_WINNT=0x0600 ATTRIBUTE_UNUSED="")
+	target_link_libraries(tlspool -lwsock32 -lws2_32)
 endif()
 
 install(

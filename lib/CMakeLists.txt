@@ -31,6 +31,8 @@ set_target_properties(tlspool_static PROPERTIES
     OUTPUT_NAME tlspool
 )
 
+target_link_libraries(tlspool_shared -lwsock32 -lws2_32)
+
 install(
     TARGETS tlspool_shared
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
