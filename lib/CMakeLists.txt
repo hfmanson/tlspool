@@ -3,6 +3,7 @@ if("${CMAKE_HOST_SYSTEM}" MATCHES ".*Windows.*")
 	set(libtlspool_SRC
 		libtlspool.c
 		libtlspool_configvar.c
+		libtlspool_windows.c
 		windows/syslog.c
 		windows/socketpair.c
 	)
@@ -12,6 +13,7 @@ else()
 		libtlspool_lidentry.c	
 		libtlspool_pinentry.c	
 		libtlspool_configvar.c
+		libtlspool_posix.c
 	)
 endif()
 

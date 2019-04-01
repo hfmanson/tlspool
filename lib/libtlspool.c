@@ -11,7 +11,6 @@
 #include <limits.h>
 #include <ctype.h>
 
-#include <unistd.h>
 #include <pthread.h>
 #include <fcntl.h>
 #include <syslog.h>
@@ -19,9 +18,8 @@
 #include <tlspool/starttls.h>
 #include <tlspool/commands.h>
 
-#ifdef WINDOWS_PORT
-#include <winsock2.h>
-#else
+#ifndef WINDOWS_PORT
+#include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -30,13 +28,13 @@
 #include <netinet/in.h>
 #endif
 
+#include "libtlspool.h"
+
 #if !defined(WINDOWS_PORT)
 #define closesocket(s) close(s)
 #endif
 
 #ifdef WINDOWS_PORT
-#define PIPE_TIMEOUT 5000
-#define BUFSIZE 4096
 #define random rand
 #define srandom srand
 #define _tprintf printf
@@ -161,41 +159,6 @@ pool_handle_t tlspool_open_poolhandle (char *path) {
 	return poolfdsample;
 }
 
-
-/* Determine an upper limit for simultaneous STARTTLS threads, based on the
- * number of available file descriptors.  Note: The result is cached, so
- * don't use root to increase beyond max in setrlimit() after calling this.
- */
-int tlspool_simultaneous_starttls(void) {
-#ifdef WINDOWS_PORT
-	return 512;
-#else /* WINDOWS_PORT */
-	static int simu = -1;
-	if (simu < 0) {
-		struct rlimit rlimit_nofile;
-		if (getrlimit (RLIMIT_NOFILE, &rlimit_nofile) == -1) {
-			syslog (LOG_NOTICE, "Failed to determine simultaneous STARTTLS: %s", strerror (errno));
-			rlimit_nofile.rlim_max = 1024;  // Pick something
-		}
-		simu = rlimit_nofile.rlim_max / 2;  // 2 FDs per STARTTLS
-	}
-	return simu;
-#endif /* WINDOWS_PORT */
-}
-
-
-/* The request registry is an array of pointers, filled by the starttls_xxx()
- * functions for as long as they have requests standing out.  The registry
- * permits instant lookup of a mutex to signal, so the receiving end may
- * pickup the message in its also-registered tlspool command buffer.
- */
-
-struct registry_entry {
-	pthread_mutex_t *sig;		/* Wait for master thread's recvmsg() */
-	struct tlspool_command *buf;	/* Buffer to hold received command */
-	pool_handle_t pfd;			/* Client thread's assumed poolfd */
-};
-
 static struct registry_entry **registry;
 
 static pthread_mutex_t registry_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -210,7 +173,7 @@ static pthread_mutex_t registry_lock = PTHREAD_MUTEX_INITIALIZER;
  * The return value is 0 on success, or -1 on failure; the most probable
  * cause for failure is
  */
-static int registry_update (int *reqid, struct registry_entry *entry) {
+int registry_update (int *reqid, struct registry_entry *entry) {
 	static int simu = -1;
 	static uint16_t pos = 0;
 	int ctr;
@@ -283,111 +246,6 @@ static void registry_flush (pool_handle_t poolfd) {
 	pthread_mutex_unlock (&registry_lock);
 }
 
-#ifdef WINDOWS_PORT
-static pool_handle_t open_named_pipe (LPCTSTR lpszPipename)
-{
-	HANDLE hPipe;
-	//struct tlspool_command chBuf;
-	BOOL   fSuccess = FALSE;
-	DWORD  dwMode;
-
-	// Try to open a named pipe; wait for it, if necessary.
-
-	while (1)
-	{
-		hPipe = CreateFile(
-			lpszPipename,   // pipe name
-			GENERIC_READ |  // read and write access
-			GENERIC_WRITE,
-			0,              // no sharing
-			NULL,           // default security attributes
-			OPEN_EXISTING,  // opens existing pipe
-			FILE_FLAG_OVERLAPPED, // overlapped
-			NULL);          // no template file
-
-		// Break if the pipe handle is valid.
-		if (hPipe != INVALID_POOL_HANDLE)
-			break;
-
-		// Exit if an error other than ERROR_PIPE_BUSY occurs.
-		if (GetLastError() != ERROR_PIPE_BUSY)
-		{
-			_tprintf(TEXT("Could not open pipe. GLE=%d\n"), GetLastError());
-			return INVALID_POOL_HANDLE;
-		}
-
-		// All pipe instances are busy, so wait for 20 seconds.
-		if (!WaitNamedPipe(lpszPipename, 20000))
-		{
-			printf("Could not open pipe: 20 second wait timed out.");
-			return INVALID_POOL_HANDLE;
-		}
-	}
-	// The pipe connected; change to message-read mode.
-	dwMode = PIPE_READMODE_MESSAGE;
-	fSuccess = SetNamedPipeHandleState(
-		hPipe,    // pipe handle
-		&dwMode,  // new pipe mode
-		NULL,     // don't set maximum bytes
-		NULL);    // don't set maximum time
-	if (!fSuccess)
-	{
-		_tprintf(TEXT("SetNamedPipeHandleState failed. GLE=%d\n"), GetLastError());
-		return INVALID_POOL_HANDLE;
-	}
-	ULONG ServerProcessId;
-	if (GetNamedPipeServerProcessId(hPipe, &ServerProcessId)) {
-		printf("GetNamedPipeServerProcessId: ServerProcessId = %ld\n", ServerProcessId);
-	} else {
-		_tprintf(TEXT("GetNamedPipeServerProcessId failed. GLE=%d\n"), GetLastError());
-	}
-	return hPipe;
-}
-
-static int np_send_command(struct tlspool_command *cmd) {
-	DWORD  cbToWrite, cbWritten;
-	OVERLAPPED overlapped;
-	BOOL fSuccess;
-
-	/* Send the request */
-	// Send a message to the pipe server.
-
-	cbToWrite = sizeof (struct tlspool_command);
-	_tprintf(TEXT("Sending %d byte cmd\n"), cbToWrite);
-
-	memset(&overlapped, 0, sizeof(overlapped));
-	overlapped.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
-
-	fSuccess = WriteFile(
-		poolfd,                  // pipe handle
-		cmd,                    // cmd message
-		cbToWrite,              // cmd message length
-		NULL,                  // bytes written
-		&overlapped);            // overlapped
-
-	if (!fSuccess && GetLastError() == ERROR_IO_PENDING )
-	{
-// printf ("DEBUG: Write I/O pending\n");
-		fSuccess = WaitForSingleObject(overlapped.hEvent, INFINITE) == WAIT_OBJECT_0;
-	}
-
-	if (fSuccess) {
-		fSuccess = GetOverlappedResult(poolfd, &overlapped, &cbWritten, TRUE);
-	}
-
-	if (!fSuccess)
-	{
-		_tprintf(TEXT("WriteFile to pipe failed. GLE=%d\n"), GetLastError());
-		errno = EPIPE;
-		return -1;
-	} else {
-// printf ("DEBUG: Wrote %ld bytes to pipe\n", cbWritten);
-	}
-// printf("DEBUG: Message sent to server, receiving reply as follows:\n");
-	return 0;
-}
-#endif /* WINDOWS_PORT */
-
 /* The master thread issues the recv() commands on the TLS Pool socket, and
  * redistributes the result to the registry entries that are waiting for
  * the data.  The thread is started when the poolfd is first requested.
@@ -405,31 +263,11 @@ static int np_send_command(struct tlspool_command *cmd) {
  * TLS Pool anew, using exponential back-off.
  */
 static void *master_thread (void *path) {
-#ifndef WINDOWS_PORT
-	useconds_t usec;
-	struct sockaddr_un sun;
-	//NOT-USED// char anc [CMSG_SPACE(sizeof (int))];
-	struct iovec iov;
-	struct cmsghdr *cmsg;
-	struct msghdr mh = { 0 };
-#else
-	DWORD usec;
-#endif
+	unsigned int usec;
 	struct tlspool_command cmd;
 	//NOT-USED// char anc [CMSG_SPACE(sizeof (int))];
 	struct registry_entry *entry;
-#ifdef WINDOWS_PORT
-	BOOL   fSuccess = FALSE;
-	DWORD  cbRead;
-#endif
 
-#ifndef WINDOWS_PORT
-	//
-	// Setup path information -- value and size were checked
-	memset (&sun, 0, sizeof (sun));
-	strcpy (sun.sun_path, (char *) path);
-	sun.sun_family = AF_UNIX;
-#endif
 
 	//
 	// Service forever
@@ -449,26 +287,10 @@ static void *master_thread (void *path) {
 		// with 1s, 2s, 4s, 8s, 16s, 32s, 32s, 32s, ... intervals.
 		usec = 1000000;
 		while (poolfd == INVALID_POOL_HANDLE) {
-#ifdef WINDOWS_PORT
-// printf ("DEBUG: path = %s\n", (char *) path);
-			pool_handle_t newpoolfd = open_named_pipe ((LPCTSTR) path);
-// printf ("DEBUG: newpoolfd = %d\n", newpoolfd);
+			pool_handle_t newpoolfd = open_pool (path);			
 			if (newpoolfd != INVALID_POOL_HANDLE) {
 				poolfd = newpoolfd;
 			}
-#else
-			pool_handle_t newpoolfd = socket (AF_UNIX, SOCK_STREAM, 0);
-			if (newpoolfd != INVALID_POOL_HANDLE) {
-				if (connect (newpoolfd, (struct sockaddr *) &sun, SUN_LEN (&sun)) == 0) {
-// printf ("DEBUG: Succeeded connect() to TLS Pool\n");
-					poolfd = newpoolfd;
-				} else {
-					tlspool_close_poolhandle (newpoolfd);
-					newpoolfd = INVALID_POOL_HANDLE;
-				}
-			}
-// printf ("DEBUG: Trying new poolfd %d for path %s\n", poolfd, sun.sun_path);
-#endif
 			//
 			// Signal a newly set poolfd value to all waiting.
 			// Note that we do not need to claim a mutex first;
@@ -483,11 +305,7 @@ static void *master_thread (void *path) {
 			//
 			// Wait before repeating, with exponential back-off
 			if (poolfd == INVALID_POOL_HANDLE) {
-#ifdef WINDOWS_PORT
-				Sleep(usec / 1000);
-#else
-				usleep(usec);
-#endif
+				os_sleep(usec);
 				usec <<= 1;
 				if (usec > 32000000) {
 					usec = 32000000;
@@ -500,46 +318,8 @@ static void *master_thread (void *path) {
 		// At that time, a break ends the following loop and jumps
 		// back up to the re-connection logic.
 		while (1) {
-			int retval;
-#ifdef WINDOWS_PORT
-			OVERLAPPED overlapped;
-
-			memset(&overlapped, 0, sizeof(overlapped));
-			overlapped.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
-
-			// Read from the pipe.
-			fSuccess = ReadFile(
-				poolfd,       // pipe handle
-				&cmd,         // buffer to receive reply
-				sizeof (cmd), // size of buffer
-				NULL,         // number of bytes read
-				&overlapped); // not overlapped
-
-			if (!fSuccess && GetLastError() == ERROR_IO_PENDING )
-			{
-// printf ("DEBUG: Read I/O pending\n");
-				fSuccess = WaitForSingleObject(overlapped.hEvent, INFINITE) == WAIT_OBJECT_0;
-			}
-
-			if (fSuccess) {
-				fSuccess = GetOverlappedResult(poolfd, &overlapped, &cbRead, TRUE);
-			}
-
-			if (!fSuccess)
-			{
-				_tprintf(TEXT("ReadFile from pipe failed. GLE=%d\n"), GetLastError());
-				retval = -1;
-			} else {
-// printf ("DEBUG: Read %ld bytes from pipe\n", cbRead);
-			}
-#else
-			iov.iov_base = &cmd;
-			iov.iov_len = sizeof (cmd);
-			mh.msg_iov = &iov;
-			mh.msg_iovlen = 1;
-			//NOT-USED// mh.msg_control = anc;
-			//NOT-USED// mh.msg_controllen = sizeof (anc);
-			retval = recvmsg (poolfd, &mh, MSG_NOSIGNAL);
+			int retval = os_recvmsg_command(poolfd, &cmd);
+#ifndef WINDOWS_PORT
 			if ((retval == -1) && (errno = EINTR)) {
 				continue;	// Badly masked user signal
 			}
@@ -547,13 +327,13 @@ static void *master_thread (void *path) {
 				errno = EPIPE;
 				retval = -1;
 			}
+#endif /* !WINDOWS_PORT */
 			if (retval == -1) {
 				// This includes EPIPE, or EOF, for detached
 				// TLS Pool; the treatment is to reconnect.
 // printf ("DEBUG: recvmsg() returned -1 due to: %s\n", strerror (errno));
 				break;
 			}
-#endif /* WINDOWS_PORT */
 			//
 			// Determine where to post the received message
 			entry = registry [cmd.pio_reqid];
@@ -567,11 +347,7 @@ static void *master_thread (void *path) {
 					cmd.pio_cmd = PIOC_ERROR_V2;
 					cmd.pio_data.pioc_error.tlserrno = EPIPE;
 					strncpy (cmd.pio_data.pioc_error.message, "Client prematurely left TLS Pool negotiations", sizeof (cmd.pio_data.pioc_error.message));
-#ifdef WINDOWS_PORT
-					np_send_command (&cmd);
-#else
-					sendmsg (poolfd, &mh, MSG_NOSIGNAL);
-#endif
+					os_sendmsg_command (poolfd, &cmd, -1);
 					// Ignore errors
 // printf ("DEBUG: Sent      PIOC_ERROR_V2 as callback to TLS Pool\n");
 				}
@@ -659,21 +435,12 @@ int tlspool_ping (pingpool_t *pingdata) {
 	cmd.pio_cbid = 0;
 	cmd.pio_cmd = PIOC_PING_V2;
 	memcpy (&cmd.pio_data.pioc_ping, pingdata, sizeof (struct pioc_ping));
-#ifdef WINDOWS_PORT
-	if (np_send_command (&cmd) == -1) {
-		// errno inherited from np_send_command ()
-		registry_update (&entry_reqid, NULL);
-		return -1;
-	}
-#else
-	/* Send the request */
-	if (send (poolfd, &cmd, sizeof (cmd), MSG_NOSIGNAL) == -1) {
+	if (os_sendmsg_command (poolfd, &cmd, -1) == -1) {
 		// Let SIGPIPE be reported as EPIPE
 		registry_update (&entry_reqid, NULL);
 		// errno inherited from sendmsg()
 		return -1;
 	}
-#endif
 	/* Await response and process it */
 	registry_recvmsg (&regent);
 	registry_update (&entry_reqid, NULL);
@@ -693,107 +460,6 @@ int tlspool_ping (pingpool_t *pingdata) {
 		return -1;
 	}
 }
-
-#if defined(WINDOWS_PORT)
-static int socket_dup_protocol_info(int fd, int pid, LPWSAPROTOCOL_INFOW lpProtocolInfo)
-{
-	if (WSADuplicateSocketW((SOCKET)fd, pid, lpProtocolInfo) == SOCKET_ERROR) {
-		errno = EPIPE;
-		return -1;
-	} else {
-		return 0;
-	}
-}
-#endif
-
-
-
-/*
- * converts IPPROTO_* to SOCK_*, returns -1 if invalid protocol
- */
-static int ipproto_to_sockettype(uint8_t ipproto) {
-#ifndef WINDOWS_PORT
-	return ipproto == IPPROTO_TCP ? SOCK_STREAM : ipproto == IPPROTO_UDP ? SOCK_DGRAM : ipproto == IPPROTO_SCTP ? SOCK_SEQPACKET : -1;
-#else /* WINDOWS_PORT */
-	return ipproto == IPPROTO_TCP ? SOCK_STREAM : ipproto == IPPROTO_UDP ? SOCK_DGRAM : -1;
-#endif /* WINDOWS_PORT */
-}
-
-
-
-/*
- * The namedconnect() function is called by tlspool_starttls() when the
- * identities have been exchanged, and established, in the TLS handshake.
- * This is the point at which a connection to the plaintext side is
- * needed, and a callback to namedconnect() is made to find a handle for
- * it.  The function is called with a version of the tlsdata that has
- * been updated by the TLS Pool to hold the local and remote identities. 
- *
- * When the namedconnect argument passed to tlspool_starttls() is NULL,
- * this default function is used instead of the possible override by the
- * caller.  This interprets the privdata handle as an (int *) holding
- * a file descriptor.  If its value is valid, that is, >= 0, it will be
- * returned directly; otherwise, a socketpair is constructed, one of the
- * sockets is stored in privdata for use by the caller and the other is
- * returned as the connected file descriptor for use by the TLS Pool.
- * This means that the privdata must be properly initialised for this
- * use, with either -1 (to create a socketpair) or the TLS Pool's
- * plaintext file descriptor endpoint.  The file handle returned in
- * privdata, if it is >= 0, should be closed by the caller, both in case
- * of success and failure.
- *
- * The return value should be -1 on error, with errno set, or it should
- * be a valid file handle that can be passed back to the TLS Pool to
- * connect to.
- */
-#if !defined(WINDOWS_PORT)
-int tlspool_namedconnect_default (starttls_t *tlsdata, void *privdata) {
-	int plainfd;
-	int soxx[2];
-	int type = ipproto_to_sockettype (tlsdata->ipproto);
-	if (type == -1) {
-		errno = EINVAL;
-		return -1;
-	}
-	if (socketpair (AF_UNIX, type, 0, soxx) == 0)
-	{
-		// printf("DEBUG: socketpair succeeded\n");
-		/* Socketpair created */
-		plainfd = soxx [0];
-		* (int *) privdata = soxx [1];
-	} else {
-		/* Socketpair failed */
-		// printf("DEBUG: socketpair failed\n");
-		plainfd = -1;
-	}
-	return plainfd;
-}
-#else /* WINDOWS_PORT */
-int tlspool_namedconnect_default (starttls_t *tlsdata, void *privdata) {
-	int plainfd;
-	// https://github.com/ncm/selectable-socketpair
-	extern int dumb_socketpair(SOCKET socks[2], int sock_type, int make_overlapped);
-	SOCKET soxx[2];
-	int type = ipproto_to_sockettype (tlsdata->ipproto);
-	if (type == -1) {
-		errno = EINVAL;
-		return -1;
-	}
-	if (dumb_socketpair(soxx, type, 1) == 0)
-	{
-		// printf("DEBUG: socketpair succeeded\n");
-		/* Socketpair created */
-		plainfd = soxx [0];
-		* (int *) privdata = soxx [1];
-	} else {
-		/* Socketpair failed */
-		// printf("DEBUG: socketpair failed\n");
-		plainfd = -1;
-	}
-	return plainfd;
-}
-#endif /* WINDOWS_PORT */
-
 
 
 /* The library function for starttls, which is normally called through one
@@ -827,12 +493,6 @@ int tlspool_starttls (int cryptfd, starttls_t *tlsdata,
 	pool_handle_t poolfd = INVALID_POOL_HANDLE;
 	int plainfd = -1;
 	int sentfd = -1;
-#ifndef WINDOWS_PORT
-	struct iovec iov;
-	struct cmsghdr *cmsg;
-	struct msghdr mh = { 0 };
-	char anc[CMSG_SPACE(sizeof(int))];
-#endif
 	int processing;
 	int renegotiate = 0 != (tlsdata->flags & PIOF_STARTTLS_RENEGOTIATE);
 	int type = ipproto_to_sockettype (tlsdata->ipproto);
@@ -851,12 +511,12 @@ int tlspool_starttls (int cryptfd, starttls_t *tlsdata,
 	regent.pfd = poolfd;
 	pthread_mutex_lock (&recvwait);		// Will await unlock by master
 	/* Determine the request ID */
-	if (registry_update (&entry_reqid, &regent) != 0) {
+	if (registry_update(&entry_reqid, &regent) != 0) {
 		closesocket(cryptfd);
 		errno = EBUSY;
 		return -1;
 	}
-	memset (&cmd, 0, sizeof (cmd));	/* Do not leak old stack info */
+	memset(&cmd, 0, sizeof(cmd));	/* Do not leak old stack info */
 	cmd.pio_reqid = entry_reqid;
 	cmd.pio_cbid = 0;
 	cmd.pio_cmd = PIOC_STARTTLS_V2;
@@ -909,62 +569,7 @@ int tlspool_starttls (int cryptfd, starttls_t *tlsdata,
 // printf ("\n");
 
 	/* Send the request */
-#ifndef WINDOWS_PORT
-	iov.iov_base = &cmd;
-	iov.iov_len = sizeof(cmd);
-	mh.msg_iov = &iov;
-	mh.msg_iovlen = 1;
-#endif
-	if (!renegotiate) {
-#ifndef WINDOWS_PORT
-		mh.msg_control = anc;
-		mh.msg_controllen = sizeof (anc);
-		cmsg = CMSG_FIRSTHDR (&mh);
-		cmsg->cmsg_level = SOL_SOCKET;
-		cmsg->cmsg_type = SCM_RIGHTS;
-		*(int *)CMSG_DATA(cmsg) = cryptfd;	/* cannot close it yet */
-		cmsg->cmsg_len = CMSG_LEN(sizeof(int));
-#else /* WINDOWS_PORT */
-		// cmd was already set to 0, including ancilary data simulation
-		if (1 /*is_sock(wsock)*/) {
-			// Send a socket
-			LONG pid;
-
-			GetNamedPipeServerProcessId(poolfd, &pid);
-			cmd.pio_ancil_type = ANCIL_TYPE_SOCKET;
-			printf("DEBUG: pid = %d, cryptfd = %d\n", pid, cryptfd);
-			if (socket_dup_protocol_info(cryptfd, pid, &cmd.pio_ancil_data.pioa_socket) == -1) {
-				// printf("DEBUG: cygwin_socket_dup_protocol_info error\n");
-				// Let SIGPIPE be reported as EPIPE
-				closesocket(cryptfd);
-				registry_update (&entry_reqid, NULL);
-				// errno inherited from socket_dup_protocol_info()
-				return -1;
-			}
-			//... (..., &cmd.pio_ancil_data.pioa_socket, ...);
-		} else {
-			// Send a file handle
-			cmd.pio_ancil_type = ANCIL_TYPE_FILEHANDLE;
-			//... (..., &cmd.pio_ancil_data.pioa_filehandle, ...);
-		}
-#endif /* WINDOWS_PORT */
-	}
-#ifdef WINDOWS_PORT
-	if (np_send_command (&cmd) == -1) {
-		close (cryptfd);
-		registry_update (&entry_reqid, NULL);
-		// errno inherited from np_send_command ()
-		return -1;
-	}
-#else
-	if (sendmsg (poolfd, &mh, MSG_NOSIGNAL) == -1) {
-		// Let SIGPIPE be reported as EPIPE
-		close (cryptfd);
-		registry_update (&entry_reqid, NULL);
-		// errno inherited from sendmsg()
-		return -1;
-	}
-#endif /* WINDOWS_PORT */
+	os_sendmsg_command(poolfd, &cmd, renegotiate ? -1 : cryptfd);
 	sentfd = cryptfd;  /* Close anytime after response and before fn end */
 
 	/* Handle responses until success or error */
@@ -1001,64 +606,9 @@ int tlspool_starttls (int cryptfd, starttls_t *tlsdata,
 				cmd.pio_data.pioc_error.tlserrno = errno;
 			}
 			/* We may now have a value to send in plainfd */
-			if (plainfd >= 0) {
-#ifndef WINDOWS_PORT
-				mh.msg_control = anc;
-				mh.msg_controllen = sizeof (anc);
-				cmsg = CMSG_FIRSTHDR (&mh);
-				cmsg->cmsg_level = SOL_SOCKET;
-				cmsg->cmsg_type = SCM_RIGHTS;
-				* (int *) CMSG_DATA (cmsg) = plainfd;
-				cmsg->cmsg_len = CMSG_LEN (sizeof (int));
-#else /* ifdef WINDOWS_PORT */
-				// cmd was already set to 0, including ancilary data simulation
-				if (1 /*is_sock(wsock)*/) {
-					// Send a socket
-					ULONG pid;
-					GetNamedPipeServerProcessId(poolfd, &pid);
-					cmd.pio_ancil_type = ANCIL_TYPE_SOCKET;
-					// printf("DEBUG: pid = %d, plainfd = %d\n", pid, plainfd);
-					if (socket_dup_protocol_info(plainfd, pid, &cmd.pio_ancil_data.pioa_socket) == -1) {
-						// printf("DEBUG: cygwin_socket_dup_protocol_info error\n");
-						// Let SIGPIPE be reported as EPIPE
-						closesocket(plainfd);
-						registry_update (&entry_reqid, NULL);
-						// errno inherited from socket_dup_protocol_info()
-						return -1;
-					}
-					//... (..., &cmd.pio_ancil_data.pioa_socket, ...);
-				} else {
-					// Send a file handle
-					cmd.pio_ancil_type = ANCIL_TYPE_FILEHANDLE;
-					//... (..., &cmd.pio_ancil_data.pioa_filehandle, ...);
-				}
-#endif /* WINDOWS_PORT */
-			}
-
 			/* Now supply plainfd in the callback response */
 			sentfd = plainfd;
-#ifdef WINDOWS_PORT
-			if (np_send_command (&cmd) == -1) {
-				if (sentfd >= 0) {
-					closesocket(sentfd);
-					sentfd = -1;
-				}
-				registry_update (&entry_reqid, NULL);
-				// errno inherited from np_send_command()
-				return -1;
-			}
-#else
-			if (sendmsg (poolfd, &mh, MSG_NOSIGNAL) == -1) {
-				// Let SIGPIPE be reported as EPIPE
-				if (sentfd >= 0) {
-					close (sentfd);
-					sentfd = -1;
-				}
-				registry_update (&entry_reqid, NULL);
-				// errno inherited from sendmsg()
-				return -1;
-			}
-#endif /* WINDOWS_PORT */
+			os_sendmsg_command(poolfd, &cmd, plainfd);
 			break;	// Loop around and try again
 		case PIOC_STARTTLS_V2:
 			/* Wheee!!! we're done */
@@ -1114,22 +664,12 @@ int _tlspool_control_command (int cmdcode, uint8_t *ctlkey) {
 	cmd.pio_cmd = cmdcode;
 	memcpy (&cmd.pio_data.pioc_control.ctlkey, ctlkey, TLSPOOL_CTLKEYLEN);
 // printf ("DEBUG: Using control key %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n", cmd.pio_data.pioc_control.ctlkey [0], cmd.pio_data.pioc_control.ctlkey [1], cmd.pio_data.pioc_control.ctlkey [2], cmd.pio_data.pioc_control.ctlkey [3], cmd.pio_data.pioc_control.ctlkey [4], cmd.pio_data.pioc_control.ctlkey [5], cmd.pio_data.pioc_control.ctlkey [6], cmd.pio_data.pioc_control.ctlkey [7], cmd.pio_data.pioc_control.ctlkey [8], cmd.pio_data.pioc_control.ctlkey [9], cmd.pio_data.pioc_control.ctlkey [10], cmd.pio_data.pioc_control.ctlkey [11], cmd.pio_data.pioc_control.ctlkey [12], cmd.pio_data.pioc_control.ctlkey [13], cmd.pio_data.pioc_control.ctlkey [14], cmd.pio_data.pioc_control.ctlkey [15]);
-
-#ifdef WINDOWS_PORT
-	if (np_send_command (&cmd) == -1) {
-		registry_update (&entry_reqid, NULL);
-		// errno inherited from np_send_command ()
-		return -1;
-	}
-#else
-	/* Send the request */
-	if (send (poolfd, &cmd, sizeof (cmd), MSG_NOSIGNAL) == -1) {
+	if (os_sendmsg_command (poolfd, &cmd, -1) == -1) {
 		// Let SIGPIPE be reported as EPIPE
 		registry_update (&entry_reqid, NULL);
-		// errno inherited from send()
+		// errno inherited from sendmsg()
 		return -1;
 	}
-#endif
 	/* Receive the response */
 	registry_recvmsg (&regent);
 	switch (cmd.pio_cmd) {
@@ -1241,22 +781,12 @@ int tlspool_prng (char *label, char *opt_ctxvalue,
 	} else {
 		cmd.pio_data.pioc_prng.in2_len = -1;
 	}
-
-#ifdef WINDOWS_PORT
-if (np_send_command (&cmd) == -1) {
-	// errno inherited from np_send_command ()
-	registry_update (&entry_reqid, NULL);
-	return -1;
-}
-#else
-	/* Send the request */
-	if (send (poolfd, &cmd, sizeof (cmd), MSG_NOSIGNAL) == -1) {
+	if (os_sendmsg_command (poolfd, &cmd, -1) == -1) {
 		// Let SIGPIPE be reported as EPIPE
 		registry_update (&entry_reqid, NULL);
 		// errno inherited from sendmsg()
 		return -1;
 	}
-#endif
 	/* Await response and process it */
 	registry_recvmsg (&regent);
 	registry_update (&entry_reqid, NULL);
