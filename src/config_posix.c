@@ -1,26 +1,4 @@
-#include "whoami.h"
-#include <stdlib.h>
-#include <stdio.h>
-#include <errno.h>
-#include <ctype.h>
-#include <string.h>
-#include <limits.h>
-
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <sys/file.h>
-#include <sys/un.h>
-#include <sys/stat.h>
-#include <pwd.h>
-#include <grp.h>
-#include <unistd.h>
-
-#include <syslog.h>
-#include <fcntl.h>
-#include <signal.h>
-
-#include "config.h"
-
+/* This file is #include'd by config.c */
 void unlink_pidfile (void) {
 #ifndef CONFIG_PARSE_ONLY
 	unlink (configvars [CFGVAR_DAEMON_PIDFILE]);

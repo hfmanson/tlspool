@@ -15,6 +15,17 @@ extern "C"
 
 #include <tlspool/commands.h>
 
+
+#ifdef WINDOWS_PORT
+#define TLSPOOL_DEFAULT_CONFIG_PATH "/etc/tlspool.conf.windows"
+#define TLSPOOL_DEFAULT_SOCKET_PATH "\\\\.\\pipe\\tlspool"
+#define TLSPOOL_DEFAULT_PIDFILE_PATH "/var/run/tlspool.pid"
+#else
+#define TLSPOOL_DEFAULT_CONFIG_PATH "/etc/tlspool.conf"
+#define TLSPOOL_DEFAULT_SOCKET_PATH "/var/run/tlspool.sock"
+#define TLSPOOL_DEFAULT_PIDFILE_PATH "/var/run/tlspool.pid"
+#endif /* WINDOWS_PORT */
+
 #ifdef WINDOWS_PORT
 #include <windows.h>
 #else
@@ -35,16 +46,6 @@ extern "C"
  * the calls are not re-entrant.  TODO: asynchronicity & request pooling.
  */
 
-
-#ifdef WINDOWS_PORT
-#define TLSPOOL_DEFAULT_CONFIG_PATH "/etc/tlspool.conf.windows"
-#define TLSPOOL_DEFAULT_SOCKET_PATH "\\\\.\\pipe\\tlspool"
-#define TLSPOOL_DEFAULT_PIDFILE_PATH "/var/run/tlspool.pid"
-#else
-#define TLSPOOL_DEFAULT_CONFIG_PATH "/etc/tlspool.conf"
-#define TLSPOOL_DEFAULT_SOCKET_PATH "/var/run/tlspool.sock"
-#define TLSPOOL_DEFAULT_PIDFILE_PATH "/var/run/tlspool.pid"
-#endif /* WINDOWS_PORT */
 
 /* Retrieve the process identity of the TLS Pool from the named file, or fall
  * back on the default file if the name is set to NULL.  Returns -1 on failure.
@@ -299,9 +300,38 @@ int tlspool_pin_service (char *path, uint32_t regflags, int responsetimeout_usec
  * So, be sure to use TLSPOOL_PRNGBUFLEN which holds the header-file defined
  * size.
  */
-int tlspool_prng (char *label, char *opt_ctxvalue,
+int tlspool_prng (char *label,
+		uint16_t ctxvalue_len, uint8_t *opt_ctxvalue,
 		uint16_t prng_len, uint8_t *prng_buf,
 		uint8_t *ctlkey);
+
+
+/* Check or retrieve information from the TLS Pool.  Use kind_info to select
+ * the kind of information, with a PIOK_INFO_xxx tag from <tlspool/commands.h>.
+ *
+ * The amount of data will not exceed TLSPOOL_INFOBUFLEN, and you should
+ * provide a buffer that can hold at least that number of bytes.  In addition,
+ * you should provide a pointer to a length.  Initialise this length to ~0
+ * to perform a query.  Any other length indicates a match, including the
+ * value 0 for a match with an empty string.
+ *
+ * You should provide the ctlkey from the tlspool_starttls() exchange to
+ * be able to reference the connection that you intend to query.
+ *
+ * This function returns zero on success, and -1 on failure.  In case of
+ * failure, errno will be set.  Specifically useful to know is that errno
+ * is set to E_TLSPOOL_INFOKIND_UNKNOWN when the TLS Pool has no code to
+ * provide the requested information (and so its current version will not
+ * provide it to any query) and to E_TLSPOOL_INFO_NOT_FOUND when the
+ * TLS Pool cannot answer the info query for other reasons, such as not
+ * having the information available in the current connection.
+ * 
+ * The error ENOSYS is returned when the TLS Pool has no implementation
+ * for the query you made.
+ */
+int tlspool_info (uint32_t info_kind,
+			uint8_t infobuf [TLSPOOL_INFOBUFLEN], uint16_t *infolenptr,
+			uint8_t *ctlkey);
 
 
 /* Fetch a configuration variable value from the configuration file.  This is not
@@ -309,7 +339,7 @@ int tlspool_prng (char *label, char *opt_ctxvalue,
  * will iterate over the config file until it reads the desired value.  The value
  * returned is allocated and should be freed by the caller using free().
  *
- * When cfgfile is NULL, the environment variable TLSPOOL_CONFIGFILE is
+ * When cfgfile is NULL, the environment variable TLSPOOL_CONFIG_FILE is
  * tried first, followed by the default setting from the macro 
  * TLSPOOL_DEFAULT_SOCKET_PATH as defined in <tlspool/starttls.h>.
  *

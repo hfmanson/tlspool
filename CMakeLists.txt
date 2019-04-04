@@ -47,6 +47,7 @@ find_package(OpenLDAP REQUIRED)    # ARPA
 find_package(P11-Kit REQUIRED)     # ARPA
 find_package(Quick-DER 1.2.4 REQUIRED NO_MODULE)  # Config
 find_package(Unbound REQUIRED)     # ARPA
+find_package(com_err REQUIRED)     # Local
 
 # TODO: look for TLS-KDH
 
@@ -58,6 +59,8 @@ endif()
 feature_summary(WHAT ALL VAR _features)
 message(STATUS ${_features})
 
+option(DEBUG "Produce debugging output (for developers)" OFF)
+
 option(TEST_UNDER_TLSPOOL "Test under the assumption of an available TLS Pool" OFF)
 
 option(EXPERIMENTAL_SRP_SUPPORT "Enable support for SRP based on relative file names" OFF)
@@ -65,8 +68,27 @@ if (EXPERIMENTAL_SRP_SUPPORT)
     add_definitions(-DEXPERIMENTAL_SRP)
 endif()
 
+option(EXPERIMENTAL_LIBEV "Experiment with libev as a event backend" OFF)
+
+# Constrain the acceptable STARTTLS driver names
+# to those that are supported in our source code
+# set_property (CACHE STARTTLS_DRIVER PROPERTY STRINGS gnutls openssl mbedtls)
+if (NOT STARTTLS_DRIVER)
+    if (GnuTLS_FOUND)
+        set (STARTTLS_DRIVER gnutls CACHE STRING "Select the driving software for the STARTTLS feature")
+    endif()
+endif()
+if (NOT STARTTLS_DRIVER)
+    # For now, require a STARTTLS_DRIVER choice
+    # Later, consider using it to select available features (see PIOC_PING_V2)
+    message (FATAL_ERROR "You need _some_ driver for STARTTLS")
+endif()
+set_property (CACHE STARTTLS_DRIVER PROPERTY STRINGS gnutls)
 # These are compile flags, not definitions, but it happens to work.
 add_definitions(-fPIC -pthread)
+if (DEBUG)
+	add_definitions (-ggdb3 -O0)
+endif()
 # Pretend we looked for pthread libraries, so that we can write
 # cmake code that looks consistent.
 set(pthread_LIBRARIES pthread)

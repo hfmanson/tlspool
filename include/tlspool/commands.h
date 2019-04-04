@@ -29,6 +29,7 @@ extern "C"
 #define TLSPOOL_CTLKEYLEN 16
 #define TLSPOOL_SERVICELEN 16
 #define TLSPOOL_PRNGBUFLEN 350
+#define TLSPOOL_INFOBUFLEN (350-TLSPOOL_CTLKEYLEN)
 #define TLSPOOL_TIMEOUT_DEFAULT 0
 #define TLSPOOL_TIMEOUT_INFINITE (~(uint32_t)0)
 
@@ -107,7 +108,7 @@ enum anciltype {
 #pragma pack(push,2)
 
 struct pioc_error {
-	int tlserrno;			// See <errno.h>
+	int tlserrno;			// Constrained to int32_t values
 	char message [128];
 };
 
@@ -159,6 +160,13 @@ struct pioc_prng {
 	uint8_t buffer [TLSPOOL_PRNGBUFLEN]; // ctlkey, in1, in2
 };
 
+struct pioc_info {
+	uint8_t ctlkey [TLSPOOL_CTLKEYLEN]; // Control key
+	uint32_t info_kind;
+	uint16_t len;		// ~0 for "no value provided"
+	uint8_t buffer [TLSPOOL_INFOBUFLEN];
+};
+
 struct tlspool_command {
 	uint16_t pio_reqid;	// Request->Response request identifier
 	uint16_t pio_cbid;	// Response->Request callback identifier
@@ -171,6 +179,7 @@ struct tlspool_command {
                 struct pioc_lidentry pioc_lidentry;
 		struct pioc_control pioc_control;
 		struct pioc_prng pioc_prng;
+		struct pioc_info pioc_info;
 	} pio_data;
 #ifdef WINDOWS_PORT
 	union { HANDLE hPipe; uint64_t _pad1; };
@@ -195,14 +204,46 @@ typedef struct pioc_lidentry lidentry_t;
 
 /* An error packet is sent if the other party is unwilling to continue
  * the current exchange.  It explains why, through a code and message,
- * in the pioc_error type.  Error codes are defined in <errno.h>
+ * in the pioc_error type.  Error codes are defined in <errno.h> or
+ * the are generated with com_err (see below).
  */
 #define PIOC_SUCCESS_V2				0x00000000
 
 
 /* An error packet is sent if the other party is unwilling to continue
  * the current exchange.  It explains why, through a code and message,
- * in the pioc_error type.  Error codes are defined in <errno.h>
+ * in the pioc_error type.  Error codes are defined in <errno.h> or
+ * the are generated from error tables with compile_et, part of the
+ * com_err suite.  The use of com_err is to merge ranges of error
+ * codes from a variety of sources.
+ *
+ * We no longer support values other than valid int32_t values in the
+ * integer field.  We never used that either, since we focussed on
+ * values taken from <errno.h>.  We make this explicit because we
+ * intend to focus on embedded systems, and although DER can pack any
+ * INTEGER size, we want to limit what these systems need to handle
+ * to what is usable for us and practical for them.
+ *
+ * Similar to this range limit, com_err was conceived in 1989, when
+ * 32-bit integers were called long and when (apparently) int32_t
+ * integers were not heard of.  The specification is clear however,
+ * that error tables need 3 or 4 character names and produce error
+ * codes with a table code in the top 24 bits and a code within the
+ * error range in the bottom 8 bits.  This still works today; there
+ * are 16,777,215 (not counting range 0 which is reserved for POSIX
+ * errors from <errno.h>) and the risk of clashes is only 50% when
+ * more than 4000 libraries are merged in one application.
+ *
+ * The limit also makes it possible to move values without loss,
+ * tlserrno <- errno <- tlserrno <- errno <- ...
+ *
+ * Note that we are storing values in errno that cannot be resolved
+ * with strerror() or perror() but that require their substitutes
+ * error_message() and com_err() from the com_err suite.
+ *
+ * Finally, any POSIX error codes unequal to 0, usually in the range
+ * 1..255, are generated locally.  The TLS Pool no longer generates
+ * these codes, in light of upcoming support for remote access.
  */
 #define PIOC_ERROR_V2				0x00000001
 
@@ -335,6 +376,50 @@ typedef struct pioc_lidentry lidentry_t;
  * be sure to use TLSPOOL_PRNGBUFLEN which holds the header-file defined size.
  */
 #define PIOC_PRNG_V2				0x0000002b
+
+
+/* Exchange information about the connection, usually representative
+ * of data fields in credentials.  The same information exchange may
+ * serve to read, write or check data, inasfar as it is appropriate
+ * for the kind of information.
+ *
+ * The kind of information is a constant PIOK_INFO_xxx as defined
+ * below.  The TLS Pool is often authoritative for a kind of
+ * information, but that may not always be the case.  What is
+ * always the case is that the authoritative party sends only
+ * data that makes sense.  What it receives however, may be seen
+ * as an inquiry.
+ *
+ * The pioc_info structure that holds the information contains not
+ * just an info_kind, but also an info_len with the number of bytes
+ * for the information (which is limited in size).
+ *
+ * The info_len can be set to ~0 to indicate that the field must
+ * be considered absent.  This is not the same as setting the length
+ * to zero, which might indicate that an empty string is defined.
+ * If you want to ask for information, set info_len to ~0; if you
+ * want to check a value, set info_len to a lower value, perhaps 0.
+ * A check will report an error, while a query would deliver a
+ * desired field.  Which makes sense depends on the info_kind.
+ *
+ * There is no registry of supported forms of PIOK_INFO_xxx, but
+ * you can simply try the forms that you find interesting.
+ *
+ * This could easily detoriorate into a generic carrier for a
+ * protocol, with damaging impact on the internal structure
+ * of the TLS Pool.  So don't go there.  When more commands are
+ * needed, than add a PIOC_ value that does not occur here yet.
+ *
+ * Examples of proper use of pioc_info are for name forms and for
+ * channel binding information.  See PIOK_INFO_xxx for concrete
+ * definitions.
+ *
+ * The design of this facility is not keen on iteration.  Talk to
+ * us if you think this is wrong.  But keep in mind that this
+ * calls for more state maintenance in the TLS Pool and perhaps
+ * a loss of clarity in callback handling in the Asynchronous API.
+ */
+#define PIOC_INFO_V2				0x0000002c
 
 
 /* Detach the connection decribed by the given ctlkey value.  The value for
@@ -761,6 +846,76 @@ typedef struct pioc_lidentry lidentry_t;
  * root key and cert, namely to return DB_NOTFOUND.
  */
 #define PIOF_LIDENTRY_ONTHEFLY			0x00200000
+
+
+
+/************************** PIOK_INFO_xxx KINDS *************************/
+
+
+/* PIOK_INFO_CERT_SUBJECT and PIOK_INFO_CERT_ISSUER reference the
+ * subject and issuer fields of the TBSCertificate in RFC 5280.
+ * The representation is exact, which is reasonable because the
+ * contents in this structure are in DER, which is a canonical
+ * representation.  Incidentally, and not widely known, the
+ * surroundings of TBSCertificate are permitted to be BER, so
+ * more loosely structured and certainly not canonical.  But,
+ * since it is often generated together and because all DER is
+ * valid BER, it is usually DER.  Just thought you might care.
+ *
+ * The difference between _PEERCERT_ and _MYCERT_ is that
+ * the former looks at the remote certificate and the latter
+ * at the local certificate.
+ */
+#define PIOK_INFO_PEERCERT_SUBJECT		0x52800000
+#define PIOK_INFO_PEERCERT_ISSUER		0x52800001
+#define PIOK_INFO_MYCERT_SUBJECT		0x52800100
+#define PIOK_INFO_MYCERT_ISSUER			0x52800101
+
+
+/* PIOK_INFO_CERT_SUBJECTALTNAME references the subjectAltName field
+ * in an X.509 certificate.  This can only be used as a check, and the
+ * search for an exact match.  The structure of the name in info_buf
+ * must be like the GeneralName in RFC 5280.  Interesting forms here
+ * are the dNSName that is in common use in a large number of server
+ * certificates, and the KRB5PrincipalName from RFC 4556 that uses the
+ * OtherName form to introduce an object identifier followed by the
+ * realm and principal name of a Kerberos identity.
+ *
+ * The difference between _PEERCERT_ and _MYCERT_ is that
+ * the former looks at the remote certificate and the latter
+ * at the local certificate.
+ */
+#define PIOK_INFO_PEERCERT_SUBJECTALTNAME	0x52800002
+#define PIOK_INFO_MYCERT_SUBJECTALTNAME		0x52800102
+
+
+/* PIOK_INFO_CHANBIND_TLS_UNIQUE returns the information for
+ * channel binding in the tls-unique variant, as defined in
+ * RFC 5929.  Briefly put, it exports the one-but-last of the
+ * Finished messages in TLS.  It can be used to improve the
+ * binding between layers.  SASL and GSS-API define a variety
+ * of mechanisms that incorporate these values into their
+ * calculations.  Effectively, authentication fails when the
+ * end points wrongly assume that they are on the same channel.
+ */
+#define PIOK_INFO_CHANBIND_TLS_UNIQUE		0x59290000
+
+
+/* PIOK_INFO_CHANBIND_TLS_SERVER_END_POINT is a much simpler,
+ * but also much weaker alternative to the foregoing option
+ * for channel binding.  Briefly put, it exports a hash of
+ * the server certificate.  The certificate is taken from a
+ * TLS connection that does its own validation, but the
+ * relative weakness of this form of channel binding is that
+ * it is the same for all TLS connections to the same server.
+ * In other words, a SASL mechanism using this form of
+ * channel binding might be replayed against the same server
+ * if it was captured in spite of the TLS protection.  Avoid
+ * this option if you can use tls-unique.
+ */
+#define PIOK_INFO_CHANBIND_TLS_SERVER_END_POINT	0x59290001
+
+
 
 #ifdef __cplusplus
 }

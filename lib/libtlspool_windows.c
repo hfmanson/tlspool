@@ -21,8 +21,6 @@
 
 #include <winsock2.h>
 
-#include "libtlspool.h"
-
 #define PIPE_TIMEOUT 5000
 #define BUFSIZE 4096
 #define random rand
@@ -276,7 +274,7 @@ int tlspool_simultaneous_starttls(void) {
 	return 512;
 }
 
-int os_sleep(unsigned int usec) {
+int os_usleep(unsigned int usec) {
 	Sleep(usec / 1000);
 	return 0;
 }

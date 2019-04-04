@@ -1,39 +1,12 @@
-#include "whoami.h"
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <string.h>
-#include <assert.h>
-#include <stdint.h>
-#include <limits.h>
-#include <ctype.h>
-
-#include <unistd.h>
-#include <pthread.h>
-#include <fcntl.h>
-#include <syslog.h>
-
-#include <tlspool/starttls.h>
-#include <tlspool/commands.h>
-
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <sys/select.h>
-#include <sys/resource.h>
-#include <netinet/in.h>
-
-#include "libtlspool.h"
-
+/* This file is #include'd by libtlspool.c */
 #define closesocket(s) close(s)
 
 int os_sendmsg_command(pool_handle_t poolfd, struct tlspool_command *cmd, int fd) {
 	struct iovec iov;
 	struct cmsghdr *cmsg;
 	struct msghdr mh = { 0 };
-	iov.iov_base = &cmd;
-	iov.iov_len = sizeof(cmd);
+	iov.iov_base = cmd;
+	iov.iov_len = sizeof(struct tlspool_command);
 	mh.msg_iov = &iov;
 	mh.msg_iovlen = 1;
 	if (fd >= 0) {
@@ -46,6 +19,7 @@ int os_sendmsg_command(pool_handle_t poolfd, struct tlspool_command *cmd, int fd
 		*(int *)CMSG_DATA(cmsg) = fd;
 		cmsg->cmsg_len = CMSG_LEN(sizeof(int));
 	}
+	return sendmsg (poolfd, &mh, MSG_NOSIGNAL);
 }
 
 
@@ -132,7 +106,7 @@ int tlspool_simultaneous_starttls(void) {
 	return simu;
 }
 
-int os_sleep(unsigned int usec) {
+int os_usleep(unsigned int usec) {
 	return usleep(usec);
 }
 
@@ -150,6 +124,6 @@ pool_handle_t open_pool (void *path) {
 			newpoolfd = INVALID_POOL_HANDLE;
 		}
 	}
-// printf ("DEBUG: Trying new poolfd %d for path %s\n", poolfd, sun.sun_path);
+// printf ("DEBUG: Trying new poolfd %d for path %s\n", newpoolfd, sun.sun_path);
 	return newpoolfd;
 }

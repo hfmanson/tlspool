@@ -3,7 +3,6 @@ if("${CMAKE_HOST_SYSTEM}" MATCHES ".*Windows.*")
 	set(libtlspool_SRC
 		libtlspool.c
 		libtlspool_configvar.c
-		libtlspool_windows.c
 		windows/syslog.c
 		windows/socketpair.c
 	)
@@ -17,6 +16,8 @@ else()
 	)
 endif()
 
+# Include the error table from ../src
+use_com_err_table (errortable)
 
 # Compile the files only once
 add_library(_libtlspool OBJECT ${libtlspool_SRC})

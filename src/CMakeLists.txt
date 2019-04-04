@@ -15,42 +15,38 @@ include_directories(
     ${Unbound_INCLUDE_DIR}
 )
 
+add_com_err_table (errortable)
+
 set(tlspool_SRC
-	cache.c
-	config.c
-	ctlkey.c
-	daemon.c
-	donai.c
-	error.c
-	lidentry.c
-	manage.c
-	online.c
-	pgp.c
-	pinentry.c
-	remote.c
-	service.c
-	starttls.c
-	trust.c
-	validate.c
+    cache.c
+    config.c
+    ctlkey.c
+    daemon.c
+    donai.c
+    error.c
+    lidentry.c
+    manage.c
+    online.c
+    pgp.c
+    pinentry.c
+    remote.c
+    service.c
+    ${STARTTLS_DRIVER}.c
+    trust.c
+    validate.c
+    ${COM_ERR_errortable_SRC}
 )
 # add windows/syslog.c for windows
 if("${CMAKE_HOST_SYSTEM}" MATCHES ".*Windows.*")
 	set(tlspool_SRC
 		${tlspool_SRC}
-		service_windows.c
-		config_windows.c
 		windows/syslog.c
-	)
-else()
-	set(tlspool_SRC
-		${tlspool_SRC}
-		service_posix.c
-		config_posix.c
 	)
 endif()
 
-add_executable(tlspool ${tlspool_SRC})
-target_link_libraries(tlspool
+add_executable(tlspool-daemon ${tlspool_SRC})
+target_compile_definitions(tlspool-daemon PRIVATE -DTLSPOOL_VERSION="${TLSPool_VERSION}")
+target_link_libraries(tlspool-daemon
     ${BDB_LIBRARY}
     ${GNUTLS_LIBRARY}
     ${GnuTLSDane_LIBRARIES}
@@ -61,15 +57,16 @@ target_link_libraries(tlspool
     ${Quick-DER_LIBRARIES}
     ${Unbound_LIBRARIES}
     ${pthread_LIBRARIES}
+    ${com_err_LIBRARIES}
 )
 
 if("${CMAKE_HOST_SYSTEM}" MATCHES ".*Windows.*")
 	add_compile_definitions(_WIN32_WINNT=0x0600 ATTRIBUTE_UNUSED="")
-	target_link_libraries(tlspool -lwsock32 -lws2_32)
+	target_link_libraries(tlspool-daemon -lwsock32 -lws2_32)
 endif()
 
 install(
-    TARGETS tlspool
+    TARGETS tlspool-daemon
     DESTINATION ${CMAKE_INSTALL_SBINDIR}
 )
 
@@ -77,4 +74,3 @@ install(
     DIRECTORY ${CMAKE_SOURCE_DIR}/include/tlspool/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/tlspool
 )
-

@@ -26,8 +26,6 @@
 #define _tprintf printf
 #define _tmain main
 
-#include "service.h"
-
 #define CONNECTING_STATE 0
 #define READING_STATE 1
 #define INSTANCES 4

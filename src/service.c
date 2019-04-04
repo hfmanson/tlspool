@@ -6,9 +6,12 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
-#include <errno.h>
 #include <pthread.h>
 #include <assert.h>
+
+#include <errno.h>
+#include <com_err.h>
+#include <errortable.h>
 
 #ifndef WINDOWS_PORT
 #include <unistd.h>
@@ -35,14 +38,10 @@
 #define WEOF ((wint_t)(0xFFFF))
 #endif
 
-#define PIPE_TIMEOUT 5000
-#define BUFSIZE 4096
-
 #define _tprintf printf
 #define _tmain main
 #endif /* WINDOWS_PORT */
 
-#include "service.h"
 /* The data stored in this module consists of lists of sockets to listen to
  * for connection setup and command exchange, but not data communication.
  * Commands are received from the various clients and processed, always
@@ -73,13 +72,15 @@
  */
 
 
-int stop_service = 0;
+static int stop_service = 0;
 static uint32_t facilities;
 
-struct callback cblist [1024];
-struct callback *cbfree;
-pthread_mutex_t cbfree_mutex = PTHREAD_MUTEX_INITIALIZER;
+static struct callback cblist [1024];
+static struct callback *cbfree;
+static pthread_mutex_t cbfree_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+static int os_send_command (struct command *cmd, int passfd);
+static void os_run_service ();
 
 /* Setup the service module.
  */
@@ -109,7 +110,7 @@ void cleanup_service (void) {
  */
 static struct command *cmdpool = NULL;
 static int cmdpool_len = 1000;
-struct command *allocate_command_for_clientfd (pool_handle_t fd) {
+static struct command *allocate_command_for_clientfd (pool_handle_t fd) {
 	static int cmdpool_pos = 0;
 	int pos;
 	struct command *cmd;
@@ -139,6 +140,7 @@ struct command *allocate_command_for_clientfd (pool_handle_t fd) {
 	return &cmdpool [pos];
 }
 
+
 /* Free any commands that were allocated to the given client file descriptor.
  * This is disruptive; the commands will not continue their behaviour by
  * responding to the requests.  This means that it should only be used for
@@ -147,7 +149,7 @@ struct command *allocate_command_for_clientfd (pool_handle_t fd) {
  *
  * TODO: This is O(cmdpool_len) so linked lists could help to avoid trouble.
  */
-void free_commands_by_clientfd (pool_handle_t clientfd) {
+static void free_commands_by_clientfd (pool_handle_t clientfd) {
 	int i;
 	if (cmdpool == NULL) {
 		return;
@@ -229,7 +231,7 @@ void copy_tls_command(struct command *cmd, struct tlspool_command *tls_command) 
 /* Check if a command request is a proper callback response.
  * Return 1 if it is, othterwise return 0.
  */
-int is_callback (struct command *cmd) {
+static int is_callback (struct command *cmd) {
 	uint16_t cbid = cmd->cmd.pio_cbid;
 	if (cbid == 0) {
 		return 0;
@@ -316,11 +318,12 @@ struct command *send_callback_and_await_response (struct command *cmdresp, time_
 	return followup;
 }
 
+
 /* Present a callback command request to the thread that is waiting for it.
  * This must be called from the main thread of the TLS pool, and it will
  * spark life to the thread that is awaiting the callback.
  */
-void post_callback (struct command *cmd) {
+static void post_callback (struct command *cmd) {
 	uint16_t cbid = cmd->cmd.pio_cbid - 1;
 	cblist [cbid].fd = INVALID_POOL_HANDLE;
 	cblist [cbid].followup = cmd;
@@ -358,8 +361,8 @@ static void free_callbacks_by_clientfd (pool_handle_t clientfd) {
 			errcmd->cmd.pio_reqid = 0;  // Don't know how to set it
 			errcmd->cmd.pio_cbid = i + 1;
 			errcmd->cmd.pio_cmd = PIOC_ERROR_V2;
-			errcmd->cmd.pio_data.pioc_error.tlserrno = ECONNRESET;
-			snprintf (errcmd->cmd.pio_data.pioc_error.message, 127, "Client fd %d closed", clientfd);
+			errcmd->cmd.pio_data.pioc_error.tlserrno = E_TLSPOOL_CLIENT_DISCONNECT;
+			snprintf (errcmd->cmd.pio_data.pioc_error.message, 127, "TLS Pool client fd %d closed", clientfd);
 printf ("DEBUG: Freeing callback with cbid=%d for clientfd %d\n", i+1, clientfd);
 			post_callback (errcmd);
 printf ("DEBUG: Freed   callback with cbid=%d for clientfd %d\n", i+1, clientfd);
@@ -367,9 +370,66 @@ printf ("DEBUG: Freed   callback with cbid=%d for clientfd %d\n", i+1, clientfd)
 	}
 }
 
+
+/* Process an info query; it depends on what is being asked,
+ * where it should be directed.  Not everything is TLS :-)
+ */
+static void  process_command_info (struct command *cmd) {
+	uint8_t *ctlkey = cmd->cmd.pio_data.pioc_info.ctlkey;
+	uint32_t kind   = cmd->cmd.pio_data.pioc_info.info_kind;
+	uint16_t len    = cmd->cmd.pio_data.pioc_info.len;
+	uint8_t *buf    = cmd->cmd.pio_data.pioc_info.buffer;
+	//
+	// Is the control key valid?
+	struct ctlkeynode *node = ctlkey_find (cmd->cmd.pio_data.pioc_info.ctlkey, security_tls, cmd->clientfd);
+	if (node == NULL) {
+		send_error (cmd, E_TLSPOOL_CTLKEY_NOT_FOUND,
+					"TLS Pool cannot find the control key");
+		goto done;
+	}
+	//
+	// Ensure proper sizing of the request
+	if ((len > sizeof (cmd->cmd.pio_data.pioc_info.buffer)) && (len != 0xffff)) {
+		send_error (cmd, E_TLSPOOL_COMMAND_NOTIMPL, "TLS Pool command or variety not implemented");
+		goto done_unfind;
+	}
+	//
+	// Invoke a handler specific to the kind of information
+	switch (kind) {
+	case PIOK_INFO_PEERCERT_SUBJECT:
+	case PIOK_INFO_MYCERT_SUBJECT:
+		starttls_info_cert_subject (cmd, node, len, buf);
+		break;
+	case PIOK_INFO_PEERCERT_ISSUER:
+	case PIOK_INFO_MYCERT_ISSUER:
+		starttls_info_cert_issuer (cmd, node, len, buf);
+		break;
+	case PIOK_INFO_PEERCERT_SUBJECTALTNAME:
+	case PIOK_INFO_MYCERT_SUBJECTALTNAME:
+		starttls_info_cert_subjectaltname (cmd, node, len, buf);
+		break;
+	case PIOK_INFO_CHANBIND_TLS_UNIQUE:
+		starttls_info_chanbind_tls_unique (cmd, node, len, buf);
+		break;
+	case PIOK_INFO_CHANBIND_TLS_SERVER_END_POINT:
+		starttls_info_chanbind_tls_server_end_point (cmd, node, len, buf);
+		break;
+	default:
+		send_error (cmd, E_TLSPOOL_INFOKIND_UNKNOWN, "TLS Pool does not support that kind of info");
+		break;
+	}
+	//
+	// Cleanup; this involves unlocking the ctlkey to other messages
+done_unfind:
+	ctlkey_unfind (node);
+done:
+	;
+}
+
+
 /* Process a command packet that entered on a TLS pool socket
  */
-void process_command (struct command *cmd) {
+static void process_command (struct command *cmd) {
 	tlog (TLOG_UNIXSOCK, LOG_DEBUG, "Processing command 0x%08x, passfd=%d", cmd->cmd.pio_cmd, cmd->passfd);
 	union pio_data *d = &cmd->cmd.pio_data;
 	if (is_callback (cmd)) {
@@ -390,8 +450,12 @@ printf ("DEBUG: Processing callback command sent over fd=%d\n", cmd->clientfd);
 		if (facilities & PIOF_FACILITY_STARTTLS) {
 			starttls_prng (cmd);
 		} else {
-			send_error (cmd, EACCES, "The STARTTLS facility is disabled in the TLS Pool configuration");
+			send_error (cmd, E_TLSPOOL_FACILITY_STARTTLS,
+				"TLS Pool setup excludes STARTTLS facility");
 		}
+		return;
+	case PIOC_INFO_V2:
+		process_command_info (cmd);
 		return;
 	case PIOC_CONTROL_DETACH_V2:
 		ctlkey_detach (cmd);
@@ -408,7 +472,7 @@ printf ("DEBUG: Processing callback command sent over fd=%d\n", cmd->clientfd);
 		register_lidentry_command (cmd);
 		return;
 	default:
-		send_error (cmd, ENOSYS, "Command not implemented");
+		send_error (cmd, E_TLSPOOL_COMMAND_UNKNOWN, "TLS Pool command unrecognised");
 		return;
 	}
 }
@@ -439,3 +503,10 @@ void run_service (void) {
 	}
 	os_run_service ();
 }
+
+#ifdef WINDOWS_PORT
+#include "service_windows.c"
+#else
+#include "service_posix.c"
+#endif
+

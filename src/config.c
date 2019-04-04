@@ -3,11 +3,15 @@
 #include "whoami.h"
 
 #include <stdlib.h>
+#include <stdbool.h>
 #include <stdio.h>
-#include <errno.h>
 #include <ctype.h>
 #include <string.h>
 #include <limits.h>
+
+#include <errno.h>
+#include <com_err.h>
+#include <errortable.h>
 
 #ifndef WINDOWS_PORT
 #include <sys/socket.h>
@@ -32,15 +36,13 @@
 
 #include <tlspool/internal.h>
 
-#include "config.h"
-
 //NOTYET// #include <libmemcached/memcached.h>
 
 //NOTYET// static LDAP *ldap_handle;
 
 //NOTYET// static struct memcached_st *cache;
 
-int kill_old_pid = 0;
+static int kill_old_pid = 0;
 
 typedef void (*cfghandler) (char *item, int itemno, char *value);
 
@@ -49,6 +51,59 @@ struct cfgopt {
 	cfghandler cfg_handler;
 	int cfg_idx;
 };
+
+enum VARS {
+	CFGVAR_DAEMON_PIDFILE,
+	CFGVAR_SOCKET_USER,
+	CFGVAR_SOCKET_GROUP,
+	CFGVAR_SOCKET_MODE,
+	CFGVAR_PKCS11_PATH,
+	CFGVAR_PKCS11_PIN,
+	CFGVAR_CACHE_TTL,
+	CFGVAR_CACHE_PORT,
+	CFGVAR_PRIVACY_ATTEMPT,
+	CFGVAR_LDAP_PROXY,
+	CFGVAR_RADIUS_AUTHN,
+	CFGVAR_RADIUS_AUTHZ,
+	CFGVAR_RADIUS_ACCT,
+	CFGVAR_LOG_LEVEL,
+	CFGVAR_LOG_FILTER,
+	CFGVAR_LOG_STDERR,
+	CFGVAR_DBENV_DIR,
+	CFGVAR_DB_LOCALID,
+	CFGVAR_DB_DISCLOSE,
+	CFGVAR_DB_TRUST,
+	CFGVAR_TLS_DHPARAMFILE,
+	CFGVAR_TLS_MAXPREAUTH,
+	CFGVAR_TLS_ONTHEFLY_SIGNCERT,
+	CFGVAR_TLS_ONTHEFLY_SIGNKEY,
+	CFGVAR_FACILITIES_DENY,
+	CFGVAR_FACILITIES_ALLOW,
+	CFGVAR_DNSSEC_ROOTKEY,
+	CFGVAR_KRB_CLIENT_KEYTAB,
+	CFGVAR_KRB_SERVER_KEYTAB,
+	CFGVAR_KRB_CLIENT_CREDCACHE,
+	CFGVAR_KRB_SERVER_CREDCACHE,
+	CFGVAR_POSTQUANTUM_AUTH,
+	CFGVAR_POSTQUANTUM_ENCRYPT,
+	CFGVAR_POSTQUANTUM_HANDSHAKE,
+	//
+	CFGVAR_LENGTH,
+	CFGVAR_NONE = -1
+};
+
+void cfg_setvar (char *item, int itemno, char *value);
+void cfg_socketname (char *item, int itemno, char *value);
+void cfg_p11path (char *item, int itemno, char *value);
+void cfg_p11token (char *item, int itemno, char *value);
+void cfg_ldap (char *item, int itemno, char *value);
+void cfg_cachehost (char *item, int itemno, char *value);
+#ifndef WINDOWS_PORT
+void cfg_pidfile (char *item, int itemno, char *value);
+void cfg_user (char *item, int itemno, char *value);
+void cfg_group (char *item, int itemno, char *value);
+void cfg_chroot (char *item, int itemno, char *value);
+#endif
 
 struct cfgopt config_options [] = {
 	"socket_user",		cfg_setvar,	CFGVAR_SOCKET_USER,
@@ -84,6 +139,9 @@ struct cfgopt config_options [] = {
 	"kerberos_server_keytab",   cfg_setvar,	CFGVAR_KRB_SERVER_KEYTAB,
 	"kerberos_client_credcache",cfg_setvar,	CFGVAR_KRB_CLIENT_CREDCACHE,
 	"kerberos_server_credcache",cfg_setvar,	CFGVAR_KRB_SERVER_CREDCACHE,
+	"quantum_proof_authentication",cfg_setvar, CFGVAR_POSTQUANTUM_AUTH,
+	"quantum_proof_encryption",cfg_setvar,	CFGVAR_POSTQUANTUM_ENCRYPT,
+	"quantum_proof_handshake",cfg_setvar,	CFGVAR_POSTQUANTUM_HANDSHAKE,
 #ifndef WINDOWS_PORT
 	"daemon_pidfile",	cfg_pidfile,	CFGVAR_DAEMON_PIDFILE,
 	"daemon_user",		cfg_user,	CFGVAR_NONE,
@@ -149,7 +207,13 @@ struct var2val v2v_facility_flag [] = {
 	{ NULL, 0 }
 };
 
+static char *configvars [CFGVAR_LENGTH];
 
+#ifdef WINDOWS_PORT
+#include "config_windows.c"
+#else
+#include "config_posix.c"
+#endif
 
 static unsigned int parse_var2val (char *word, int wlen, struct var2val *patterns, unsigned int defaultvalue) {
 	if (word == NULL) {
@@ -267,9 +331,6 @@ void parse_cfgfile (char *filename, int kill_competition) {
 	}
 	fclose (cf);
 }
-
-
-char *configvars [CFGVAR_LENGTH];
 
 void cfg_setvar (char *item, int itemno, char *value) {
 	if (configvars [itemno]) {
@@ -468,3 +529,53 @@ char *cfg_krb_server_credcache (void) {
 	return configvars [CFGVAR_KRB_SERVER_CREDCACHE];
 }
 
+static char *nope [] = { "NO", "No", "no", "FALSE", "False", "false", "NOPE", "Nope", "nope", "NAY", "Nay", "nay", "0", NULL };
+static char *yep [] = { "YES", "Yes", "yes", "TRUE", "True", "true", "YEP", "Yep", "yep", "AYE", "Aye", "aye", "1", NULL };
+
+/* Tactical phase 1.  Default to no because we lack general algorithms */
+bool cfg_postquantum_auth (void) {
+	// Commemmorable selection:
+	static char **jawohl = yep;
+	if (configvars [CFGVAR_POSTQUANTUM_AUTH] != NULL) {
+		while (*jawohl) {
+			if (strstr (configvars [CFGVAR_POSTQUANTUM_AUTH], *jawohl)) {
+				return true;
+			}
+			jawohl++;
+		}
+	}
+	// No match; err on the forgiving side
+	return false;
+}
+
+/* Tactical phase 1.  Default to no because we lack general algorithms */
+bool cfg_postquantum_encrypt (void) {
+	// Commemmorable selection:
+	static char **jawohl = yep;
+	if (configvars [CFGVAR_POSTQUANTUM_ENCRYPT] != NULL) {
+		while (*jawohl) {
+			if (strstr (configvars [CFGVAR_POSTQUANTUM_ENCRYPT], *jawohl)) {
+				return true;
+			}
+			jawohl++;
+		}
+	}
+	// No match; err on the forgiving side
+	return false;
+}
+
+/* Tactical phase 1.  Default to no because we lack general algorithms */
+bool cfg_postquantum_handshake (void) {
+	// Commemmorable selection:
+	static char **jawohl = yep;
+	if (configvars [CFGVAR_POSTQUANTUM_HANDSHAKE] != NULL) {
+		while (*jawohl) {
+			if (strstr (configvars [CFGVAR_POSTQUANTUM_HANDSHAKE], *jawohl)) {
+				return true;
+			}
+			jawohl++;
+		}
+	}
+	// No match; err on the forgiving side
+	return false;
+}

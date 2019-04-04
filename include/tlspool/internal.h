@@ -133,11 +133,17 @@ success_t pin_callback (int attempt, const char *token_url, const char *opt_prom
 void pinentry_forget_clientfd (pool_handle_t fd);
 
 /* starttls.c */
+struct ctlkeynode;
 void setup_starttls (void);
 void cleanup_starttls (void);
 void starttls_pkcs11_provider (char *p11path);
 void starttls (struct command *cmd);
 void starttls_prng (struct command *cmd);
+void starttls_info_cert_subject (struct command *cmd, struct ctlkeynode *node, uint16_t len, uint8_t *buf);
+void starttls_info_cert_issuer (struct command *cmd, struct ctlkeynode *node, uint16_t len, uint8_t *buf);
+void starttls_info_cert_subjectaltname (struct command *cmd, struct ctlkeynode *node, uint16_t len, uint8_t *buf);
+void starttls_info_chanbind_tls_unique (struct command *cmd, struct ctlkeynode *node, uint16_t len, uint8_t *buf);
+void starttls_info_chanbind_tls_server_end_point (struct command *cmd, struct ctlkeynode *node, uint16_t len, uint8_t *buf);
 
 /* config.c */
 char *cfg_p11pin (void);
@@ -158,6 +164,9 @@ char *cfg_krb_client_keytab (void);
 char *cfg_krb_server_keytab (void);
 char *cfg_krb_client_credcache (void);
 char *cfg_krb_server_credcache (void);
+bool cfg_postquantum_auth (void);
+bool cfg_postquantum_encrypt (void);
+bool cfg_postquantum_handshake (void);
 
 
 /* error.c -- Mapping various error code systems to others.
@@ -195,7 +204,7 @@ void error_setstring (char *);
 	if (db_errno == 0) { \
 		db_errno = (dbcall); \
 		if (db_errno != 0) { \
-			error_db2posix (db_errno, (errstr)); \
+			error_db2comerr (db_errno, (errstr)); \
 		} \
 	} \
 }
@@ -227,7 +236,7 @@ void error_setstring (char *);
 /* Workhorse functions to map error systems, concealed by shorthand macros
  * defined below.
  */
-void error_db2posix (int db_errno, char *errstr);
+void error_db2comerr (int db_errno, char *errstr);
 void error_posix2strings (char *errstr);
 
 

@@ -1,27 +1,4 @@
-#include "whoami.h"
-
-#include <stdlib.h>
-#include <stdio.h>
-#include <stdint.h>
-#include <string.h>
-#include <errno.h>
-#include <pthread.h>
-#include <assert.h>
-
-#include <unistd.h>
-
-#include <syslog.h>
-#include <fcntl.h>
-
-#include <tlspool/commands.h>
-#include <tlspool/internal.h>
-
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <poll.h>
-
-#include "service.h"
+/* this file is #include'd by service.c */
 
 static int num_sox = 0;
 static struct soxinfo soxinfo [1024];
@@ -47,33 +24,6 @@ static void register_socket (pool_handle_t sox, uint32_t soxinfo_flags) {
 	num_sox++;
 }
 
-/* Forget all callbacks that were sent to the given clientfd, by posting an
- * ERROR message to them.  This is used to avoid infinitely waiting threads
- * in the TLS Pool when a clientfd is closed by the client (perhaps due to
- * a crash in response to the callback).
- */
-static void free_callbacks_by_clientfd (pool_handle_t clientfd) {
-	int i;
-	for (i=0; i<1024; i++) {
-//TODO// == clientfd was >= 0 (and managed to get closes sent back to all)
-		if (cblist [i].fd == clientfd) {
-			struct command *errcmd;
-			errcmd = allocate_command_for_clientfd (clientfd);
-			errcmd->clientfd = clientfd;
-			errcmd->passfd = -1;
-			errcmd->claimed = 1;
-			errcmd->cmd.pio_reqid = 0;  // Don't know how to set it
-			errcmd->cmd.pio_cbid = i + 1;
-			errcmd->cmd.pio_cmd = PIOC_ERROR_V2;
-			errcmd->cmd.pio_data.pioc_error.tlserrno = ECONNRESET;
-			snprintf (errcmd->cmd.pio_data.pioc_error.message, 127, "Client fd %d closed", clientfd);
-printf ("DEBUG: Freeing callback with cbid=%d for clientfd %d\n", i+1, clientfd);
-			post_callback (errcmd);
-printf ("DEBUG: Freed   callback with cbid=%d for clientfd %d\n", i+1, clientfd);
-		}
-	}
-}
-
 /* TODO: This may copy information back and thereby avoid processing in the
  * current loop passthrough.  No problem, poll() will show it once more. */
 static void unregister_client_socket_byindex (int soxidx) {
@@ -90,7 +40,7 @@ static void unregister_client_socket_byindex (int soxidx) {
 	}
 }
 
-int os_send_command (struct command *cmd, int passfd)
+static int os_send_command (struct command *cmd, int passfd)
 {
 	char anc [CMSG_SPACE(sizeof (int))];
 	struct iovec iov;
@@ -208,7 +158,7 @@ void process_activity (pool_handle_t sox, int soxidx, struct soxinfo *soxi, shor
 	}
 }
 
-void os_run_service ()
+static void os_run_service ()
 {
 	int polled;
 	int i;

@@ -4,12 +4,15 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <errno.h>
 #include <string.h>
 #include <assert.h>
 #include <stdint.h>
 #include <limits.h>
 #include <ctype.h>
+
+#include <errno.h>
+#include <com_err.h>
+#include <errortable.h>
 
 #include <pthread.h>
 #include <fcntl.h>
@@ -28,8 +31,6 @@
 #include <netinet/in.h>
 #endif
 
-#include "libtlspool.h"
-
 #if !defined(WINDOWS_PORT)
 #define closesocket(s) close(s)
 #endif
@@ -43,6 +44,25 @@
 /* Windows supports SCTP but fails to define this IANA-standardised symbol: */
 #ifndef IPPROTO_SCTP
 #define IPPROTO_SCTP 132
+#endif
+
+/* The request registry is an array of pointers, filled by the starttls_xxx()
+ * functions for as long as they have requests standing out.  The registry
+ * permits instant lookup of a mutex to signal, so the receiving end may
+ * pickup the message in its also-registered tlspool command buffer.
+ */
+
+struct registry_entry {
+	pthread_mutex_t *sig;		/* Wait for master thread's recvmsg() */
+	struct tlspool_command *buf;	/* Buffer to hold received command */
+	pool_handle_t pfd;			/* Client thread's assumed poolfd */
+};
+static int registry_update (int *reqid, struct registry_entry *entry);
+
+#ifdef WINDOWS_PORT
+#include "libtlspool_windows.c"
+#else
+#include "libtlspool_posix.c"
 #endif
 
 /* The master thread will run the receiving side of the socket that connects
@@ -173,7 +193,7 @@ static pthread_mutex_t registry_lock = PTHREAD_MUTEX_INITIALIZER;
  * The return value is 0 on success, or -1 on failure; the most probable
  * cause for failure is
  */
-int registry_update (int *reqid, struct registry_entry *entry) {
+static int registry_update (int *reqid, struct registry_entry *entry) {
 	static int simu = -1;
 	static uint16_t pos = 0;
 	int ctr;
@@ -234,9 +254,9 @@ static void registry_flush (pool_handle_t poolfd) {
 		if ((entry != NULL) && (entry->pfd != poolfd)) {
 			// Fill the cmd buffer with an error message
 			entry->buf->pio_cmd = PIOC_ERROR_V2;
-			entry->buf->pio_data.pioc_error.tlserrno = EPIPE;
+			entry->buf->pio_data.pioc_error.tlserrno = E_TLSPOOL_CLIENT_DISCONNECT;
 			strncpy (entry->buf->pio_data.pioc_error.message,
-				"No reply from TLS Pool",
+				"TLS Pool connection closed",
 				sizeof (entry->buf->pio_data.pioc_error.message));
 			// Signal continuation to the recipient
 			pthread_mutex_unlock (entry->sig);
@@ -305,7 +325,7 @@ static void *master_thread (void *path) {
 			//
 			// Wait before repeating, with exponential back-off
 			if (poolfd == INVALID_POOL_HANDLE) {
-				os_sleep(usec);
+				os_usleep(usec);
 				usec <<= 1;
 				if (usec > 32000000) {
 					usec = 32000000;
@@ -345,8 +365,10 @@ static void *master_thread (void *path) {
 					// TLS Pool is waiting for a callback;
 					// Send it an ERROR message instead.
 					cmd.pio_cmd = PIOC_ERROR_V2;
-					cmd.pio_data.pioc_error.tlserrno = EPIPE;
-					strncpy (cmd.pio_data.pioc_error.message, "Client prematurely left TLS Pool negotiations", sizeof (cmd.pio_data.pioc_error.message));
+					cmd.pio_data.pioc_error.tlserrno = E_TLSPOOL_CLIENT_REFUSES_CALLBACK;
+					strncpy (cmd.pio_data.pioc_error.message,
+							"TLS Pool client will not partake in callback",
+							sizeof (cmd.pio_data.pioc_error.message));
 					os_sendmsg_command (poolfd, &cmd, -1);
 					// Ignore errors
 // printf ("DEBUG: Sent      PIOC_ERROR_V2 as callback to TLS Pool\n");
@@ -511,12 +533,12 @@ int tlspool_starttls (int cryptfd, starttls_t *tlsdata,
 	regent.pfd = poolfd;
 	pthread_mutex_lock (&recvwait);		// Will await unlock by master
 	/* Determine the request ID */
-	if (registry_update(&entry_reqid, &regent) != 0) {
+	if (registry_update (&entry_reqid, &regent) != 0) {
 		closesocket(cryptfd);
 		errno = EBUSY;
 		return -1;
 	}
-	memset(&cmd, 0, sizeof(cmd));	/* Do not leak old stack info */
+	memset (&cmd, 0, sizeof (cmd));	/* Do not leak old stack info */
 	cmd.pio_reqid = entry_reqid;
 	cmd.pio_cbid = 0;
 	cmd.pio_cmd = PIOC_STARTTLS_V2;
@@ -569,7 +591,13 @@ int tlspool_starttls (int cryptfd, starttls_t *tlsdata,
 // printf ("\n");
 
 	/* Send the request */
-	os_sendmsg_command(poolfd, &cmd, renegotiate ? -1 : cryptfd);
+	if (os_sendmsg_command(poolfd, &cmd, renegotiate ? -1 : cryptfd) == -1) {
+		// Let SIGPIPE be reported as EPIPE
+		close (cryptfd);
+		registry_update (&entry_reqid, NULL);
+		// errno inherited from os_sendmsg_command()
+		return -1;
+	}
 	sentfd = cryptfd;  /* Close anytime after response and before fn end */
 
 	/* Handle responses until success or error */
@@ -608,7 +636,16 @@ int tlspool_starttls (int cryptfd, starttls_t *tlsdata,
 			/* We may now have a value to send in plainfd */
 			/* Now supply plainfd in the callback response */
 			sentfd = plainfd;
-			os_sendmsg_command(poolfd, &cmd, plainfd);
+			if (os_sendmsg_command(poolfd, &cmd, plainfd) == -1) {
+				// Let SIGPIPE be reported as EPIPE
+				if (sentfd >= 0) {
+					closesocket(sentfd);
+					sentfd = -1;
+				}
+				registry_update (&entry_reqid, NULL);
+				// errno inherited from np_send_command()
+				return -1;
+			}
 			break;	// Loop around and try again
 		case PIOC_STARTTLS_V2:
 			/* Wheee!!! we're done */
@@ -667,7 +704,7 @@ int _tlspool_control_command (int cmdcode, uint8_t *ctlkey) {
 	if (os_sendmsg_command (poolfd, &cmd, -1) == -1) {
 		// Let SIGPIPE be reported as EPIPE
 		registry_update (&entry_reqid, NULL);
-		// errno inherited from sendmsg()
+		// errno inherited from os_sendmsg_command()
 		return -1;
 	}
 	/* Receive the response */
@@ -732,7 +769,8 @@ int _tlspool_control_command (int cmdcode, uint8_t *ctlkey) {
  * So, be sure to use TLSPOOL_PRNGBUFLEN which holds the header-file defined
  * size.
  */
-int tlspool_prng (char *label, char *opt_ctxvalue,
+int tlspool_prng (char *label,
+		uint16_t ctxvalue_len, uint8_t *opt_ctxvalue,
 		uint16_t prng_len, uint8_t *prng_buf,
 		uint8_t *ctlkey) {
 	struct tlspool_command cmd;
@@ -746,12 +784,11 @@ int tlspool_prng (char *label, char *opt_ctxvalue,
 	if ((prng_len > TLSPOOL_PRNGBUFLEN) ||
 			(label == NULL) || (strlen (label) > 254) ||
 			((opt_ctxvalue != NULL) &&
-				((strlen (opt_ctxvalue) > 254) ||
-					(strlen (label) + strlen (opt_ctxvalue) > TLSPOOL_PRNGBUFLEN - TLSPOOL_CTLKEYLEN)))) {
+				((ctxvalue_len > 254) ||
+					(strlen (label) + ctxvalue_len > TLSPOOL_PRNGBUFLEN - TLSPOOL_CTLKEYLEN)))) {
 		errno = EINVAL;
 		return -1;
 	}
-
 
 	/* Prepare command structure */
 	poolfd = tlspool_open_poolhandle (NULL);
@@ -776,7 +813,7 @@ int tlspool_prng (char *label, char *opt_ctxvalue,
 	cmd.pio_data.pioc_prng.in1_len = strlen (label);
 	memcpy (cmd.pio_data.pioc_prng.buffer + TLSPOOL_CTLKEYLEN, label, cmd.pio_data.pioc_prng.in1_len);
 	if (opt_ctxvalue != NULL) {
-		cmd.pio_data.pioc_prng.in2_len = strlen (opt_ctxvalue);
+		cmd.pio_data.pioc_prng.in2_len = ctxvalue_len;
 		memcpy (cmd.pio_data.pioc_prng.buffer + TLSPOOL_CTLKEYLEN + cmd.pio_data.pioc_prng.in1_len, opt_ctxvalue, cmd.pio_data.pioc_prng.in2_len);
 	} else {
 		cmd.pio_data.pioc_prng.in2_len = -1;
@@ -793,12 +830,103 @@ int tlspool_prng (char *label, char *opt_ctxvalue,
 	switch (cmd.pio_cmd) {
 	case PIOC_ERROR_V2:
 		/* Bad luck, we failed */
-		syslog (LOG_INFO, "TLS Pool error to tlspool_ping(): %s", cmd.pio_data.pioc_error.message);
+		syslog (LOG_INFO, "TLS Pool error to tlspool_prng(): %s", cmd.pio_data.pioc_error.message);
 		errno = cmd.pio_data.pioc_error.tlserrno;
 		return -1;
 	case PIOC_PRNG_V2:
 		/* Wheee!!! we're done */
 		memcpy (prng_buf, cmd.pio_data.pioc_prng.buffer, prng_len);
+		return 0;
+	default:
+		/* V2 protocol error */
+		errno = EPROTO;
+		return -1;
+	}
+}
+
+/* Check or retrieve information from the TLS Pool.  Use kind_info to select
+ * the kind of information, with a PIOK_INFO_xxx tag from <tlspool/commands.h>.
+ *
+ * The amount of data will not exceed TLSPOOL_INFOBUFLEN, and you should
+ * provide a buffer that can hold at least that number of bytes.  In addition,
+ * you should provide a pointer to a length.  Initialise this length to ~0
+ * to perform a query.  Any other length indicates a match, including the
+ * value 0 for a match with an empty string.
+ *
+ * You should provide the ctlkey from the tlspool_starttls() exchange to
+ * be able to reference the connection that you intend to query.
+ *
+ * This function returns zero on success, and -1 on failure.  In case of
+ * failure, errno will be set.  Specifically useful to know is that errno
+ * is set to E_TLSPOOL_INFOKIND_UNKNOWN when the TLS Pool has no code to
+ * provide the requested information (and so its current version will not
+ * provide it to any query) and to E_TLSPOOL_INFO_NOT_FOUND when the
+ * TLS Pool cannot answer the info query for other reasons, such as not
+ * having the information available in the current connection.
+ * 
+ * The error ENOSYS is returned when the TLS Pool has no implementation
+ * for the query you made.
+ */
+int tlspool_info (uint32_t info_kind,
+			uint8_t infobuf [TLSPOOL_INFOBUFLEN], uint16_t *infolenptr,
+			uint8_t *ctlkey) {
+	struct tlspool_command cmd;
+	pthread_mutex_t recvwait = PTHREAD_MUTEX_INITIALIZER;
+	struct registry_entry regent = { .sig = &recvwait, .buf = &cmd };
+	int entry_reqid = -1;
+	pool_handle_t poolfd = INVALID_POOL_HANDLE;
+	/* Sanity check */
+	if ((*infolenptr > TLSPOOL_INFOBUFLEN) && (*infolenptr != 0xffff)) {
+		errno = EINVAL;
+		return -1;
+	}
+	/* Prepare command structure */
+	poolfd = tlspool_open_poolhandle (NULL);
+	if (poolfd == INVALID_POOL_HANDLE) {
+		errno = ENODEV;
+		return -1;
+	}
+	/* Finish setting up the registry entry */
+	regent.pfd = poolfd;
+	pthread_mutex_lock (&recvwait);		// Will await unlock by master
+	/* Determine the request ID */
+	if (registry_update (&entry_reqid, &regent) != 0) {
+		errno = EBUSY;
+		return -1;
+	}
+	/* Construct the command message */
+	memset (&cmd, 0, sizeof (cmd));	/* Do not leak old stack info */
+	cmd.pio_reqid = entry_reqid;
+	cmd.pio_cbid = 0;
+	cmd.pio_cmd = PIOC_INFO_V2;
+	cmd.pio_data.pioc_info.info_kind = info_kind;
+	cmd.pio_data.pioc_info.len = *infolenptr;
+	memcpy (cmd.pio_data.pioc_info.ctlkey, ctlkey, TLSPOOL_CTLKEYLEN);
+	if ((*infolenptr > 0) && (*infolenptr < TLSPOOL_INFOBUFLEN)) {
+		memcpy (cmd.pio_data.pioc_info.buffer, infobuf, *infolenptr);
+	}
+	/* Send the command message */
+	if (os_sendmsg_command (poolfd, &cmd, -1) == -1) {
+		// Let SIGPIPE be reported as EPIPE
+		registry_update (&entry_reqid, NULL);
+		// errno inherited from sendmsg()
+		return -1;
+	}
+	/* Await response and process it */
+	registry_recvmsg (&regent);
+	registry_update (&entry_reqid, NULL);
+	switch (cmd.pio_cmd) {
+	case PIOC_ERROR_V2:
+		/* Bad luck, we failed */
+		syslog (LOG_INFO, "TLS Pool error to tlspool_info(): %s", cmd.pio_data.pioc_error.message);
+		errno = cmd.pio_data.pioc_error.tlserrno;
+		return -1;
+	case PIOC_INFO_V2:
+		/* Wheee!!! we're done */
+		*infolenptr = cmd.pio_data.pioc_info.len;
+		if ((*infolenptr > 0) && (*infolenptr < TLSPOOL_INFOBUFLEN)) {
+			memcpy (infobuf, cmd.pio_data.pioc_info.buffer, *infolenptr);
+		}
 		return 0;
 	default:
 		/* V2 protocol error */
