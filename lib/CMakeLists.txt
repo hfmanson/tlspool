@@ -15,12 +15,16 @@ else()
 		libtlspool_posix.c
 	)
 endif()
+set(libpavlov_SRC
+    libpavlov.c
+)
 
 # Include the error table from ../src
 use_com_err_table (errortable)
 
 # Compile the files only once
 add_library(_libtlspool OBJECT ${libtlspool_SRC})
+add_library(_libpavlov OBJECT ${libpavlov_SRC})
 
 # Make libraries out of the resulting objects; these
 # need to have unique names for CMake, and use OUTPUT_NAME
