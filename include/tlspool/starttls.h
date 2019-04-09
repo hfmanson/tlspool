@@ -28,10 +28,9 @@ extern "C"
 
 #ifdef WINDOWS_PORT
 #include <windows.h>
-#else
-#include <unistd.h>
 #endif /* WINDOWS_PORT */
 
+#include <unistd.h>
 
 /*
  * These functions are used by application software to turn an existing

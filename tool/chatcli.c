@@ -5,20 +5,27 @@
 #include <string.h>
 #include <stdint.h>
 
-#include <unistd.h>
+#include <tlspool/starttls.h>
+
+#ifndef WINDOWS_PORT
 #include <poll.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#endif
+
 #include <errno.h>
 #include <signal.h>
 
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-
-#include <tlspool/starttls.h>
-
 #include "socket.h"
-#include "chat_builtin.h"
 #include "runterminal.h"
+
+#ifndef WINDOWS_PORT
+#define closesocket close
+#endif
+
+// Chat was removed immediately after git repository 4af0d87c479d9eb9720f56b2fea9cfdd0d6d1fd5
 
 static starttls_t tlsdata_cli = {
 	.flags =  PIOF_STARTTLS_LOCALROLE_CLIENT
@@ -31,12 +38,13 @@ static starttls_t tlsdata_cli = {
 };
 
 void sigcont_handler (int signum);
+#ifndef WINDOWS_PORT
 static struct sigaction sigcont_action = {
 	.sa_handler = sigcont_handler,
 	.sa_mask = 0,
 	.sa_flags = SA_NODEFER
 };
-
+#endif
 static int sigcont = 0;
 
 
@@ -50,26 +58,37 @@ void graceful_exit (int signum) {
 	exit (exit_val);
 }
 
+void dump_printable (char *descr, char *info, int infolen) {
+	printf ("%s, #%d: ", descr);
+	while (infolen-- > 0) {
+		putchar (isalnum (*info) ? *info : '.');
+		info++;
+	}
+	putchar ('\n');
+}
+
 
 int main (int argc, char **argv) {
 	int plainfd;
 	int sox;
 	struct sockaddr_storage sa;
+#ifndef WINDOWS_PORT
 	sigset_t sigcontset;
+#endif
 	uint8_t rndbuf [16];
 	bool do_signum = false;
 	bool do_timeout = false;
 	int signum = -1;
 	int timeout = -1;
-	bool do_chat = false;
-	int    chat_argc = 0;
-	char **chat_argv = NULL;
 	char *progname = NULL;
+	uint16_t infolen = 0;
+	uint8_t info [TLSPOOL_INFOBUFLEN];
 
 	// argv[1] is SNI or . for none;
 	// argv[2] is address and requires argv[3] for port
-	if ((argc == 1) || (argc == 3)) {
-		fprintf (stderr, "Usage: %s servername|. [address port [0|signum|-timeout [chatargs...]]]\n", argv [0]);
+	// argv[5+] were used for chat, dropped after 4af0d87c479d9eb9720f56b2fea9cfdd0d6d1fd5
+	if ((argc == 1) || (argc == 3) || (argc > 5)) {
+		fprintf (stderr, "Usage: %s servername|. [address port [0|signum|-timeout]]\n", argv [0]);
 		exit (1);
 	}
 
@@ -114,28 +133,17 @@ int main (int argc, char **argv) {
 		}
 	}
 
-	// process optional argv[5+] with chat information
-	if (argc > 5) {
-		do_chat = true;
-		chat_argc = argc - 5;
-		chat_argv = argv + 5;
+	// When timeout hits, we should stop gracefully, with exit(exit_val)
+	if (do_timeout) {
+		printf ("Scheduled to exit(exit_val) in %d seconds\n", timeout);
 	}
 
+#ifndef WINDOWS_PORT
 	if (sigemptyset (&sigcontset) ||
 	    sigaddset (&sigcontset, SIGCONT) ||
 	    pthread_sigmask (SIG_BLOCK, &sigcontset, NULL)) {
 		perror ("Failed to block SIGCONT in worker threads");
 		exit (1);
-	}
-
-	// When timeout hits, we should stop gracefully, with exit(exit_val)
-	if (do_timeout) {
-		if (signal (SIGALRM, graceful_exit) == SIG_ERR) {
-			fprintf (stderr, "Failed to install signal handler for timeout\n");
-			exit (1);
-		}
-		alarm (timeout);
-		printf ("Scheduled to exit(exit_val) in %d seconds\n", timeout);
 	}
 
 	// When the signal hits, we should stop gracefully, with exit(exit_val)
@@ -146,6 +154,11 @@ int main (int argc, char **argv) {
 		}
 		printf ("Scheduled to exit(exit_val) upon reception of signal %d\n", signum);
 	}
+#endif
+
+#ifdef WINDOWS_PORT
+	init_socket();
+#endif
 
 reconnect:
 	if (!socket_client ((struct sockaddr *) &sa, SOCK_STREAM, &sox)) {
@@ -163,6 +176,7 @@ reconnect:
 		}
 		exit (1);
 	}
+#ifdef EXTRA_TESTS	
 	// Play around, just for fun, with the control key
 	if (tlspool_control_reattach (tlsdata_cli.ctlkey) != -1) {
 		printf ("ERROR: Could reattach before detaching the control?!?\n");
@@ -179,7 +193,7 @@ reconnect:
 	if (tlspool_control_reattach (tlsdata_cli.ctlkey) != -1) {
 		printf ("ERROR: Could reattach the control twice?!?\n");
 	}
-	if (tlspool_prng ("EXPERIMENTAL-tlspool-test", NULL, 16, rndbuf, tlsdata_cli.ctlkey) == -1) {
+	if (tlspool_prng ("EXPERIMENTAL-tlspool-test", 0, NULL, 16, rndbuf, tlsdata_cli.ctlkey) == -1) {
 		printf ("ERROR: Could not extract data with PRNG function\n");
 	} else {
 		printf ("PRNG bytes: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
@@ -188,7 +202,71 @@ reconnect:
 			rndbuf [ 8], rndbuf [ 9], rndbuf [10], rndbuf [11],
 			rndbuf [12], rndbuf [13], rndbuf [14], rndbuf [15]);
 	}
+	if (tlspool_prng ("EXPERIMENTAL-tlspool-test", 16, rndbuf, 16, rndbuf, tlsdata_cli.ctlkey) == -1) {
+		printf ("ERROR: Could not extract data with PRNG function\n");
+	} else {
+		printf ("PRNG again: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
+			rndbuf [ 0], rndbuf [ 1], rndbuf [ 2], rndbuf [ 3],
+			rndbuf [ 4], rndbuf [ 5], rndbuf [ 6], rndbuf [ 7],
+			rndbuf [ 8], rndbuf [ 9], rndbuf [10], rndbuf [11],
+			rndbuf [12], rndbuf [13], rndbuf [14], rndbuf [15]);
+	}
+	infolen = 0xffff;
+	if (tlspool_info (PIOK_INFO_CHANBIND_TLS_UNIQUE, info, &infolen, tlsdata_cli.ctlkey) == -1) {
+		printf ("ERROR %d: Could not retrieve tls-unique channel binding info\n", errno);
+	} else {
+		printf ("Channel binding info, tls-unique, 12 bytes of %d: "
+			"%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
+			infolen,
+			info [ 0], info [ 1], info [ 2], info [ 3],
+			info [ 4], info [ 5], info [ 6], info [ 7],
+			info [ 8], info [ 9], info [10], info [11]);
+	}
+	infolen = 0xffff;
+	if (tlspool_info (PIOK_INFO_PEERCERT_SUBJECT, info, &infolen, tlsdata_cli.ctlkey) == -1) {
+		printf ("ERROR %d: Could not retrieve Subject (peer)\n", errno);
+	} else {
+		dump_printable ("Subject, peer", info, infolen);
+	}
+	infolen = 0xffff;
+	if (tlspool_info (PIOK_INFO_PEERCERT_ISSUER, info, &infolen, tlsdata_cli.ctlkey) == -1) {
+		printf ("ERROR %d: Could not retrieve Issuer (peer)\n", errno);
+	} else {
+		dump_printable ("Issuer,   peer", info, infolen);
+	}
+	strcpy ((char *) info + 2, "testsrv@tlspool.arpa2.lab");
+	info [1] = strlen (info + 2);
+	info [0] = 0x81;  // DER_TAG_CONTEXT(1);
+	infolen = 2 + strlen ((char *) (info + 2));
+	if (tlspool_info (PIOK_INFO_PEERCERT_SUBJECTALTNAME, info, &infolen, tlsdata_cli.ctlkey) == -1) {
+		printf ("ERROR %d: Could not retrieve SubjectAltName (peer)\n", errno);
+	} else {
+		dump_printable ("SubjectAltName, peer", info, infolen);
+	}
+	infolen = 0xffff;
+	if (tlspool_info (PIOK_INFO_MYCERT_SUBJECT, info, &infolen, tlsdata_cli.ctlkey) == -1) {
+		printf ("ERROR %d: Could not retrieve Subject (mine)\n", errno);
+	} else {
+		dump_printable ("Subject, mine", info, infolen);
+	}
+	infolen = 0xffff;
+	if (tlspool_info (PIOK_INFO_MYCERT_ISSUER, info, &infolen, tlsdata_cli.ctlkey) == -1) {
+		printf ("ERROR %d: Could not retrieve Issuer (mine)\n", errno);
+	} else {
+		dump_printable ("Issuer,   mine", info, infolen);
+	}
+	strcpy ((char *) info + 2, "testcli@tlspool.arpa2.lab");
+	info [1] = strlen (info + 2);
+	info [0] = 0x81;  // DER_TAG_CONTEXT(1);
+	infolen = 2 + strlen ((char *) (info + 2));
+	if (tlspool_info (PIOK_INFO_MYCERT_SUBJECTALTNAME, info, &infolen, tlsdata_cli.ctlkey) == -1) {
+		printf ("ERROR %d: Could not retrieve SubjectAltName (mine)\n", errno);
+	} else {
+		dump_printable ("SubjectAltName, mine", info, infolen);
+	}
+#endif	
 	printf ("DEBUG: STARTTLS succeeded on testcli\n");
+#ifndef WINDOWS_PORT
 	if (-1 == sigaction (SIGCONT, &sigcont_action, NULL)) {
 		perror ("Failed to install signal handler for SIGCONT");
 		close (plainfd);
@@ -200,20 +278,15 @@ reconnect:
 	} else {
 		printf ("SIGCONT will trigger renegotiation of the TLS handshake\n");
 	}
+#endif	
 	printf ("DEBUG: Local plainfd = %d\n", plainfd);
-	if (do_chat) {
-		if (chat_builtin (plainfd, progname, chat_argc, chat_argv) != 0) {
-			fprintf (stderr, "Chat session failed on the client side\n");
-			exit (1);
-		}
-	} else {
-		runterminal (plainfd, &sigcont, &tlsdata_cli,
+	runterminal (plainfd, &sigcont, &tlsdata_cli,
 			PIOF_STARTTLS_LOCALROLE_CLIENT | PIOF_STARTTLS_REMOTEROLE_SERVER | PIOF_STARTTLS_RENEGOTIATE,
 			"testcli@tlspool.arpa2.lab",
-			"testsrv@tlspool.arpa2.lab"
-		);
-	}
-	close (plainfd);
+			"testsrv@tlspool.arpa2.lab",
+			do_timeout ? timeout * 1000 : 0
+	);
+	closesocket (plainfd);
 	exit_val = 0;
 	printf ("DEBUG: Closed connection.  Waiting 2s to improve testing.\n");
 	sleep (2);

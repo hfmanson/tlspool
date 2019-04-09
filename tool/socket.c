@@ -5,18 +5,19 @@
  * From: Rick van Rein <rick@openfortress.nl>
  */
 
-
 #include "socket.h"
 
 #include <stddef.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <limits.h>
 #include <assert.h>
 #include <string.h>
 
 #include <unistd.h>
+#ifndef WINDOWS_PORT
 #include <fcntl.h>
-
+#endif
 
 #ifdef DEBUG
 #  include <stdio.h>
@@ -201,3 +202,17 @@ fail:
 }
 
 
+#ifdef WINDOWS_PORT
+int init_socket() {
+	WSADATA wsaData;
+	int iResult;
+	
+	// Initialize Winsock
+	iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
+	if (iResult != 0) {
+		printf("WSAStartup failed with error: %d\n", iResult);
+		return 1;
+	}
+	return 0;
+}
+#endif

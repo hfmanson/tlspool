@@ -259,9 +259,9 @@ void os_run_service ()
 
          // Pending read operation
             case READING_STATE:
-               if (! fSuccess || cbRet == 0)
+               if (!fSuccess)
                {
-                  printf("Error fSuccess = %d, cbRet = %d.\n", fSuccess, cbRet);
+                  printf("Error GLE = %ld\n", GetLastError());
                   DisconnectAndReconnect(i);
                   continue;
                }

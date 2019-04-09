@@ -74,3 +74,27 @@ install(
     DESTINATION ${CMAKE_INSTALL_SBINDIR}
 )
 endif()
+
+
+
+
+add_executable(pavlov pavlov.c)
+target_link_libraries(pavlov pavlov_shared ${com_err_LIBRARIES})
+
+add_library(_tool_common OBJECT runterminal_windows.c)
+target_compile_definitions(_tool_common PUBLIC -DDONAI_ONLY_TEXTPROC)
+
+add_executable(chatsrv chatsrv.c socket.c $<TARGET_OBJECTS:_tool_common>)
+target_link_libraries(chatsrv tlspool_shared ${pthread_LIBRARIES})
+
+add_executable(chatcli chatcli.c socket.c $<TARGET_OBJECTS:_tool_common>)
+target_link_libraries(chatcli tlspool_shared ${pthread_LIBRARIES})
+
+install(
+    TARGETS
+		pavlov
+        chatsrv
+		chatcli
+    DESTINATION ${CMAKE_INSTALL_SBINDIR}
+)
+

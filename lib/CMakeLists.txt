@@ -52,6 +52,29 @@ install(
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 
+# The pavlov library
+add_library(pavlov_shared SHARED $<TARGET_OBJECTS:_libpavlov>)
+set_target_properties(pavlov_shared PROPERTIES
+    OUTPUT_NAME pavlov
+)
+add_library(pavlov_static STATIC $<TARGET_OBJECTS:_libpavlov>)
+set_target_properties(pavlov_static PROPERTIES
+    OUTPUT_NAME pavlov
+)
+
+if("${CMAKE_HOST_SYSTEM}" MATCHES ".*Windows.*")
+	target_link_libraries(pavlov_shared -lgnurx)
+endif()
+
+install(
+    TARGETS tlspool_shared pavlov_shared
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+)
+install(
+    TARGETS tlspool_static pavlov_static
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+)
+
 option(LANGUAGE_SUPPORT_PYTHON
 	"Add language support for Python"
 	OFF)

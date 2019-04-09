@@ -18,7 +18,7 @@
  */
 void runterminal (int chanio, int *sigcont, starttls_t *tlsdata,
 		  uint32_t startflags,
-		  const char *localid, const char *remoteid
+		  const char *localid, const char *remoteid, int timeout
  		);
 
 #endif

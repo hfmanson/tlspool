@@ -8,12 +8,25 @@
 #define KXOVER_SOCKET_H
 
 
+#include <stdint.h>
 #include <stdbool.h>
 
+#if  defined(__CYGWIN__) || defined(__MINGW64__) || defined(_WIN32)
+#define WINDOWS_PORT
+#endif
+
+#ifndef WINDOWS_PORT
 #include <sys/types.h>
 #include <sys/socket.h>
 
 #include <arpa/inet.h>
+#else /* WINDOWS_PORT */
+#include <winsock2.h>
+/* https://stackoverflow.com/a/22735803/433626 */
+#include <ws2tcpip.h>
+/* https://stackoverflow.com/a/11924203/433626 */
+typedef u_short sa_family_t;
+#endif /* WINDOWS_PORT */
 
 #include <errno.h>
 #ifdef WE_ARE_IN_KXOVER
@@ -84,6 +97,9 @@ bool socket_client (const struct sockaddr *peer, int contype, int *out_sox);
  */
 bool socket_server (const struct sockaddr *mine, int contype, int *out_sox);
 
+#ifdef WINDOWS_PORT
+int init_socket();
+#endif
 
 #endif /* KXOVER_SOCKET_H */
 
