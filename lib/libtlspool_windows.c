@@ -257,8 +257,10 @@ int os_recvmsg_command(pool_handle_t poolfd, struct tlspool_command *cmd) {
 		_tprintf(TEXT("ReadFile from pipe failed. GLE=%d\n"), GetLastError());
 		retval = -1;
 	} else {
+		retval = (int) cbRead;
 // printf ("DEBUG: Read %ld bytes from pipe\n", cbRead);
 	}
+	return retval;
 }
 pool_handle_t open_pool (void *path) {
 // printf ("DEBUG: path = %s\n", (char *) path);
