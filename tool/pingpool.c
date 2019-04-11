@@ -51,7 +51,6 @@ int main (int argc, char *argv []) {
 		sockpath = argv [1];
 	}
 	pool_handle_t pool_handle = tlspool_open_poolhandle (sockpath);
-printf("pool_handle = %d", pool_handle);
 	memset (&pp, 0, sizeof (pp));
 	strcpy (pp.YYYYMMDD_producer, TLSPOOL_IDENTITY_V2);
 	pp.facilities = PIOF_FACILITY_ALL_CURRENT;
@@ -73,8 +72,5 @@ printf("pool_handle = %d", pool_handle);
 		print_pioc_ping (&pp, "TLS Pool");
 	}	
 	printf ("\n");
-	printf("Close handle\n");	
-	tlspool_close_poolhandle (pool_handle);
-	Sleep(1000);
 	return rc;
 }

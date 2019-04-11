@@ -151,7 +151,7 @@ static pool_handle_t open_named_pipe (LPCTSTR lpszPipename)
 	}
 	ULONG ServerProcessId;
 	if (GetNamedPipeServerProcessId(hPipe, &ServerProcessId)) {
-		printf("GetNamedPipeServerProcessId: ServerProcessId = %ld\n", ServerProcessId);
+		fprintf(stderr, "DEBUG: GetNamedPipeServerProcessId: ServerProcessId = %ld\n", ServerProcessId);
 	} else {
 		_tprintf(TEXT("GetNamedPipeServerProcessId failed. GLE=%d\n"), GetLastError());
 	}
@@ -170,7 +170,7 @@ int os_sendmsg_command(pool_handle_t poolfd, struct tlspool_command *cmd, int fd
 			
 			GetNamedPipeServerProcessId(poolfd, &pid);
 			cmd->pio_ancil_type = ANCIL_TYPE_SOCKET;
-			printf("DEBUG: pid = %d, fd = %d\n", pid, fd);
+			fprintf(stderr, "DEBUG: pid = %d, fd = %d\n", pid, fd);
 			if (socket_dup_protocol_info(fd, pid, &cmd->pio_ancil_data.pioa_socket) == -1) {
 				// printf("DEBUG: cygwin_socket_dup_protocol_info error\n");
 				// Let SIGPIPE be reported as EPIPE
