@@ -34,7 +34,7 @@ file(GLOB valexp_inputs
 foreach(t ${valexp_inputs})
     add_test(
         NAME valexp-${t}
-        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/valexprun.sh $<TARGET_FILE:valexprun> ${CMAKE_CURRENT_SOURCE_DIR} ${t}
+        COMMAND python ${CMAKE_CURRENT_SOURCE_DIR}/valexprun.py $<TARGET_FILE:valexprun> ${CMAKE_CURRENT_SOURCE_DIR} ${t}
     )
 endforeach()
 
