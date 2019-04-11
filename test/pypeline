@@ -55,7 +55,8 @@ soxtypes = {
 	'SCTP:': (socket.AF_INET, socket.SOCK_SEQPACKET, 0),
 }
 
-sigtypes = signal.SIGHUP
+if os.name == 'posix':
+	sigtypes = signal.SIGHUP
 
 tmpdir = None
 
@@ -94,14 +95,14 @@ for argi in sys.argv [1:]:
 		prox [0].append (myip)
 	elif proto == 'RNDHEX:':
 		key = argi [7:]
-		if not keyed_random.has_key (key):
+		if not key in keyed_random:
 			import random
 			prng = random.Random ()
 			rnd = ''.join ([ chr (prng.randint (0,255)) for i in range (16) ])
 			keyed_random [key] = rnd
 		prox [0].append (keyed_random [key].encode ('hex'))
-	elif soxtypes.has_key (proto):
-		if not port_alloc.has_key (argi):
+	elif proto in soxtypes:
+		if not argi in port_alloc:
 			sox = socket.socket ( *soxtypes [proto] )
 			sox.bind ( (myip, 0) )
 			port = str (sox.getsockname () [1])
