@@ -14,14 +14,14 @@ DWORD WINAPI stdin_thread(LPVOID lpParam) {
 	SOCKET     s = (SOCKET) lpParam;
 	HANDLE     hStdIn = GetStdHandle(STD_INPUT_HANDLE);
 	DWORD      NumberOfBytesRead;
-	CHAR       stdinbuf[8192];
+	CHAR       stdinbuf[8193];
 	BOOL       bContinue = TRUE;
 	
 	while (bContinue) {
 		BOOL fSuccess = ReadFile(
 			hStdIn,             // stdin handle
 			stdinbuf,           // buffer to receive reply
-			sizeof (stdinbuf),  // size of buffer
+			sizeof (stdinbuf) - 1,  // size of buffer
 			&NumberOfBytesRead, // number of bytes read
 			NULL);              // overlapped
 		bContinue = fSuccess;

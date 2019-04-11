@@ -42,16 +42,6 @@ if("${CMAKE_HOST_SYSTEM}" MATCHES ".*Windows.*")
 	target_link_libraries(tlspool_shared -lwsock32 -lws2_32)
 endif()
 
-install(
-    TARGETS tlspool_shared
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-)
-install(
-    TARGETS tlspool_static
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-)
-
 # The pavlov library
 add_library(pavlov_shared SHARED $<TARGET_OBJECTS:_libpavlov>)
 set_target_properties(pavlov_shared PROPERTIES
@@ -61,14 +51,15 @@ add_library(pavlov_static STATIC $<TARGET_OBJECTS:_libpavlov>)
 set_target_properties(pavlov_static PROPERTIES
     OUTPUT_NAME pavlov
 )
-
 if("${CMAKE_HOST_SYSTEM}" MATCHES ".*Windows.*")
-	target_link_libraries(pavlov_shared -lgnurx)
+	target_link_libraries(pavlov_shared wsock32 ws2_32 gnurx)
 endif()
 
 install(
     TARGETS tlspool_shared pavlov_shared
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 install(
     TARGETS tlspool_static pavlov_static

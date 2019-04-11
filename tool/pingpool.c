@@ -41,7 +41,8 @@ void print_pioc_ping (pingpool_t *pp, char *prefix) {
 int main (int argc, char *argv []) {
 	char *sockpath = NULL;
 	pingpool_t pp;
-
+	int rc = 0;
+	
 	if (argc > 2) {
 		fprintf (stderr, "Usage: %s [socketfile]\n", argv [0]);
 		exit (1);
@@ -49,8 +50,8 @@ int main (int argc, char *argv []) {
 	if (argc == 2) {
 		sockpath = argv [1];
 	}
-	(void) tlspool_open_poolhandle (sockpath);
-
+	pool_handle_t pool_handle = tlspool_open_poolhandle (sockpath);
+printf("pool_handle = %d", pool_handle);
 	memset (&pp, 0, sizeof (pp));
 	strcpy (pp.YYYYMMDD_producer, TLSPOOL_IDENTITY_V2);
 	pp.facilities = PIOF_FACILITY_ALL_CURRENT;
@@ -67,9 +68,13 @@ int main (int argc, char *argv []) {
 	pp.facilities = ~0L;
 	if (tlspool_ping (&pp) < 0) {
 		perror ("Failed to ping TLS Pool");
-		exit (1);
-	}
-	print_pioc_ping (&pp, "TLS Pool");
+		rc = 1;
+	} else {
+		print_pioc_ping (&pp, "TLS Pool");
+	}	
 	printf ("\n");
+	printf("Close handle\n");	
+	tlspool_close_poolhandle (pool_handle);
+	Sleep(1000);
+	return rc;
 }
-

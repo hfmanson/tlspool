@@ -23,7 +23,7 @@ int main (int argc, char *argv []) {
 	char *progname = argv [0];
 	argc--;
 	argv++;
-	if (pavlov (0, 1, progname, argc, argv)) {
+	if (pavlov (0, 1, progname, argc, argv, 0)) {
 		com_err (progname, errno, "Error in pavlov");
 		exit (1);
 	} else {

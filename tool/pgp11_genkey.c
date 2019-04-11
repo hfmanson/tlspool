@@ -57,7 +57,18 @@ CK_RV C_SignUpdateDebug (CK_SESSION_HANDLE hsm, CK_BYTE_PTR data, CK_ULONG dlen)
 
 static CK_FUNCTION_LIST *fun = NULL;
 
+#if  defined(__CYGWIN__) || defined(__MINGW64__) || defined(_WIN32)
+/*
+ * Poor man's getpass
+ */
 
+char *getpass(const char *prompt) {
+	static char password[256];
+	printf("%s", prompt);
+	scanf("%s", password);
+	return password;
+}
+#endif
 
 /* Append a UserID packet to the given buffer.  This appends bytes at
  * pos into buf, clipped at totlen, and returns the new position after

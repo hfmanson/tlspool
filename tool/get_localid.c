@@ -19,11 +19,13 @@
 #include <fcntl.h>
 #include <errno.h>
 
+#include <tlspool/internal.h>
+
+#ifndef WINDOWS_PORT
 #include <arpa/inet.h>
+#endif
 
 #include <db.h>
-
-#include <tlspool/internal.h>
 
 
 const char usage[] =

@@ -1,12 +1,24 @@
-if(NOT "${CMAKE_HOST_SYSTEM}" MATCHES ".*Windows.*")
 add_definitions(-DDEBUG)
 include_directories(${BDB_INCLUDE_DIR})
+
+# Include the error table from ../src
+use_com_err_table (errortable)
 
 message(STATUS "Building TLSPool tests\n.. run 'make test' to run them.")
 
 # Because these tests #include sources from elsewhere
 add_custom_target(src-validate DEPENDS ../src/validate.c)
 add_custom_target(src-onlinecheck DEPENDS ../src/online.c)
+
+### Sizes must allow for tlserrno <- errno <- tlserrno
+#
+add_executable(error_sizes errorsizes.c)
+add_dependencies(error_sizes src-validate)
+
+add_test(
+    NAME error-sizes
+    COMMAND error_sizes
+)
 
 ### Validation tests
 #
@@ -27,17 +39,11 @@ foreach(t ${valexp_inputs})
 endforeach()
 
 
+if(NOT "${CMAKE_HOST_SYSTEM}" MATCHES ".*Windows.*")
 ### Online check
 #
 #
-set(onlinecheck_SRC onlinecheck.c ../src/config.c ../src/pgp.c)
-if("${CMAKE_HOST_SYSTEM}" MATCHES ".*Windows.*")
-	set(onlinecheck_SRC ${onlinecheck_SRC} ../src/config_windows.c)
-else()
-	set(onlinecheck_SRC ${onlinecheck_SRC} ../src/config_posix.c)
-endif()
-
-add_executable(onlinecheck ${onlinecheck_SRC})
+add_executable(onlinecheck onlinecheck.c ../src/config.c ../src/pgp.c)
 add_dependencies(onlinecheck src-onlinecheck)
 target_compile_definitions(onlinecheck PUBLIC -DCONFIG_PARSE_ONLY)
 target_include_directories(onlinecheck PUBLIC
@@ -57,7 +63,9 @@ add_test(
     COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/onlinecheck.sh $<TARGET_FILE:onlinecheck>
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
+endif()
 
+if(NOT "${CMAKE_HOST_SYSTEM}" MATCHES ".*Windows.*")
 ### Pulleyback Simulation
 #
 #
@@ -70,32 +78,48 @@ add_test(
     COMMAND pulleybacksimu
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
-
+endif()
 ### Run testcli and testsrv under Pypeline
 #
 #
-set (testcli  ${CMAKE_BINARY_DIR}/tool/testcli)
-set (testsrv  ${CMAKE_BINARY_DIR}/tool/testsrv)
+set (testcli  ${CMAKE_BINARY_DIR}/tool/tlsclient)
+set (testsrv  ${CMAKE_BINARY_DIR}/tool/tlsserver)
 set (pypeline ${CMAKE_SOURCE_DIR}/test/pypeline)
 
 if (TEST_UNDER_TLSPOOL)
 add_test(
 	NAME ping6dance-srv2cli
-	COMMAND ${pypeline}
-		${testcli} . IP:LOCAL TCP:PORT      -5 -sSv "" ping EPROTONOTSUPPORTED ping6 pong6
+	COMMAND python ${pypeline}
+		${testcli} . IP:LOCAL TCP:PORT      -5 "?ping" "!EPROTONOTSUPPORTED" "?ping6" "!pong6"
 		--
-		${testsrv} . IP:LOCAL TCP:PORT SIG:HUP -sSv    ping EPROTONOTSUPPORTED ping6 pong6
+		${testsrv} . IP:LOCAL TCP:PORT      -7 "!ping" "?EPROTONOTSUPPORTED" "!ping6" "?pong6"
 )
-endif ()
+endif()
 
 if (TEST_UNDER_TLSPOOL)
 add_test(
 	NAME ping6dance-cli2srv
-	COMMAND ${pypeline}
-		${testcli} . IP:LOCAL TCP:PORT      -5 -sSv    ping EPROTONOTSUPPORTED ping6 pong6
+	COMMAND python ${pypeline}
+		${testcli} . IP:LOCAL TCP:PORT      -5  "!ping" "?EPROTONOTSUPPORTED" "!ping6" "?pong6"
 		--
-		${testsrv} . IP:LOCAL TCP:PORT SIG:HUP -sSv "" ping EPROTONOTSUPPORTED ping6 pong6
+		${testsrv} . IP:LOCAL TCP:PORT      -7  "?ping" "!EPROTONOTSUPPORTED" "?ping6" "!pong6"
 )
-endif ()
+endif()
 
-endif ()
+### Run pingpool-async to test the asynchronous API
+#
+#
+
+if (TEST_UNDER_TLSPOOL)
+if(NOT "${CMAKE_HOST_SYSTEM}" MATCHES ".*Windows.*")
+add_test(
+	NAME pingpool-async
+	COMMAND tlspool-ping-async
+)
+else()
+add_test(
+	NAME pingpool
+	COMMAND tlspool-ping
+)
+endif()
+endif()
