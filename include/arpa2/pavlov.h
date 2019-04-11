@@ -13,4 +13,4 @@
  *   - @<msdelay> --> delay in milli-seconds
  */
 int pavlov (int fdin, int fdout,
-		char *progname, int argc, char *argv[]);
+		char *progname, int argc, char *argv[], int timeout);

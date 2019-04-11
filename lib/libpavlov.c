@@ -19,7 +19,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
-
 #include <unistd.h>
 
 #include <errno.h>
@@ -29,7 +28,41 @@
 #include <sys/types.h>
 #include <regex.h>
 
+#if  defined(__CYGWIN__) || defined(__MINGW64__) || defined(_WIN32)
+#define WINDOWS_PORT
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#endif
 
+typedef u_short sa_family_t;
+
+static int readable_timeo(int fd, int sec) {
+	fd_set rset;
+	struct timeval tv;
+	
+	FD_ZERO(&rset);
+	FD_SET(fd, &rset);
+	
+	tv.tv_sec = sec;
+	tv.tv_usec = 0;
+	
+	return select(fd + 1, &rset, NULL, NULL, sec == 0 ? NULL : &tv);
+		/* > 0 if descriptor available */
+}
+
+static int writable_timeo(int fd, int sec) {
+	fd_set wset;
+	struct timeval tv;
+	
+	FD_ZERO(&wset);
+	FD_SET(fd, &wset);
+	
+	tv.tv_sec = sec;
+	tv.tv_usec = 0;
+	
+	return select(fd + 1, NULL, &wset, NULL, sec == 0 ? NULL : &tv);
+		/* > 0 if descriptor available */
+}
 
 /* Main interaction point: pavlov () with parameters:
  *
@@ -45,11 +78,12 @@
  *   - @<msdelay> --> delay in milli-seconds
  */
 int pavlov (int fdin, int fdout,
-		char *progname, int argc, char *argv[]) {
+		char *progname, int argc, char *argv[], int timeout) {
 	//
 	// Iterate through arguments, starting at argv [0]
 	char databuf [4096 + 1];
 	int argi = 0;
+	
 	while (argi < argc) {
 		char *arg = argv [argi];
 		if (arg == NULL) {
@@ -66,7 +100,16 @@ int pavlov (int fdin, int fdout,
 		//
 		// Command handler for writing output
 		case '!':
-			write (fdout, arg, strlen (arg));
+			{ }
+#ifndef WINDOWS_PORT
+			int written = writable_timeo(fdout, timeout) > 0 ? write (fdout, arg, strlen (arg)) : -1;
+#else
+			int written = writable_timeo(fdout, timeout) > 0 ? send (fdout, arg, strlen (arg), 0) : -1;
+#endif			
+			if (written < 0)  {
+				// errno = PAVLOV_OUTPUT_BROKEN;
+				goto fail;
+			}
 			break;
 		//
 		// Command handler for extended regular extensions
@@ -79,7 +122,11 @@ int pavlov (int fdin, int fdout,
 			}
 			bool busy = true;
 			do {
-				int datalen = read (fdin, databuf, sizeof (databuf) - 1);
+#ifndef WINDOWS_PORT
+				int datalen = readable_timeo(fdin, timeout) > 0 ? read (fdin, databuf, sizeof (databuf) - 1) : -1;
+#else
+				int datalen = readable_timeo(fdin, timeout) > 0 ? recv (fdin, databuf, sizeof (databuf) - 1, 0) : -1;
+#endif			
 				if (datalen < 0) {
 					// errno = PAVLOV_INPUT_BROKEN;
 					break;
