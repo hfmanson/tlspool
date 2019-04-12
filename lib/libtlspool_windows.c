@@ -1,6 +1,5 @@
 #include "whoami.h"
 
-#include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <string.h>
@@ -25,7 +24,6 @@
 #define BUFSIZE 4096
 #define random rand
 #define srandom srand
-#define _tprintf printf
 
 /* Windows supports SCTP but fails to define this IANA-standardised symbol: */
 #ifndef IPPROTO_SCTP
@@ -126,14 +124,14 @@ static pool_handle_t open_named_pipe (LPCTSTR lpszPipename)
 		// Exit if an error other than ERROR_PIPE_BUSY occurs.
 		if (GetLastError() != ERROR_PIPE_BUSY)
 		{
-			_tprintf(TEXT("Could not open pipe. GLE=%d\n"), GetLastError());
+			syslog(LOG_CRIT, "Could not open pipe. GLE=%d\n", GetLastError());
 			return INVALID_POOL_HANDLE;
 		}
 
 		// All pipe instances are busy, so wait for 20 seconds.
 		if (!WaitNamedPipe(lpszPipename, 20000))
 		{
-			printf("Could not open pipe: 20 second wait timed out.");
+			syslog(LOG_CRIT, "Could not open pipe: 20 second wait timed out.");
 			return INVALID_POOL_HANDLE;
 		}
 	}
@@ -146,14 +144,14 @@ static pool_handle_t open_named_pipe (LPCTSTR lpszPipename)
 		NULL);    // don't set maximum time
 	if (!fSuccess)
 	{
-		_tprintf(TEXT("SetNamedPipeHandleState failed. GLE=%d\n"), GetLastError());
+		syslog(LOG_CRIT, "SetNamedPipeHandleState failed. GLE=%d\n", GetLastError());
 		return INVALID_POOL_HANDLE;
 	}
 	ULONG ServerProcessId;
 	if (GetNamedPipeServerProcessId(hPipe, &ServerProcessId)) {
-		fprintf(stderr, "DEBUG: GetNamedPipeServerProcessId: ServerProcessId = %ld\n", ServerProcessId);
+		syslog(LOG_DEBUG, "DEBUG: GetNamedPipeServerProcessId: ServerProcessId = %ld\n", ServerProcessId);
 	} else {
-		_tprintf(TEXT("GetNamedPipeServerProcessId failed. GLE=%d\n"), GetLastError());
+		syslog(LOG_CRIT, "GetNamedPipeServerProcessId failed. GLE=%d\n", GetLastError());
 	}
 	return hPipe;
 }
@@ -170,7 +168,7 @@ int os_sendmsg_command(pool_handle_t poolfd, struct tlspool_command *cmd, int fd
 			
 			GetNamedPipeServerProcessId(poolfd, &pid);
 			cmd->pio_ancil_type = ANCIL_TYPE_SOCKET;
-			fprintf(stderr, "DEBUG: pid = %d, fd = %d\n", pid, fd);
+			syslog(LOG_DEBUG, "DEBUG: pid = %d, fd = %d\n", pid, fd);
 			if (socket_dup_protocol_info(fd, pid, &cmd->pio_ancil_data.pioa_socket) == -1) {
 				// printf("DEBUG: cygwin_socket_dup_protocol_info error\n");
 				// Let SIGPIPE be reported as EPIPE
@@ -191,7 +189,7 @@ int os_sendmsg_command(pool_handle_t poolfd, struct tlspool_command *cmd, int fd
 	// Send a message to the pipe server.
 
 	cbToWrite = sizeof (struct tlspool_command);
-	_tprintf(TEXT("Sending %d byte cmd\n"), cbToWrite);
+	syslog(LOG_DEBUG, "Sending %d byte cmd\n", cbToWrite);
 
 	memset(&overlapped, 0, sizeof(overlapped));
 	overlapped.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
@@ -215,7 +213,7 @@ int os_sendmsg_command(pool_handle_t poolfd, struct tlspool_command *cmd, int fd
 
 	if (!fSuccess)
 	{
-		_tprintf(TEXT("WriteFile to pipe failed. GLE=%d\n"), GetLastError());
+		syslog(LOG_CRIT, "WriteFile to pipe failed. GLE=%d\n", GetLastError());
 		errno = EPIPE;
 		return -1;
 	} else {
@@ -254,7 +252,7 @@ int os_recvmsg_command(pool_handle_t poolfd, struct tlspool_command *cmd) {
 
 	if (!fSuccess)
 	{
-		_tprintf(TEXT("ReadFile from pipe failed. GLE=%d\n"), GetLastError());
+		syslog(LOG_CRIT, "ReadFile from pipe failed. GLE=%d\n", GetLastError());
 		retval = -1;
 	} else {
 		retval = (int) cbRead;

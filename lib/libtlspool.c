@@ -2,7 +2,6 @@
 
 #include "whoami.h"
 
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
@@ -38,7 +37,6 @@
 #ifdef WINDOWS_PORT
 #define random rand
 #define srandom srand
-#define _tprintf printf
 #endif /* WINDOWS_PORT */
 
 /* Windows supports SCTP but fails to define this IANA-standardised symbol: */
@@ -139,7 +137,7 @@ pool_handle_t tlspool_open_poolhandle (char *path) {
 				path = TLSPOOL_DEFAULT_SOCKET_PATH;
 			}
 			assert (path != NULL);
-			fprintf (stderr, "DEBUG: Opening TLS Pool on socket path %s\n", path);
+			syslog(LOG_DEBUG, "DEBUG: Opening TLS Pool on socket path %s\n", path);
 #ifndef WINDOWS_PORT
 			if (strlen(path) + 1 > sizeof(((struct sockaddr_un *) NULL)->sun_path)) {
 				syslog(LOG_ERR, "TLS Pool path name too long for UNIX domain socket");
