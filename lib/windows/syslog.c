@@ -71,8 +71,11 @@ vsyslog(int priority, const char *format, va_list ap) {
 		}
 	}
 #else
-	vprintf(format, ap);
-	printf("\n");
+	char buf[1024];
+
+	vsprintf(buf, format, ap);
+	OutputDebugString(buf);
+	OutputDebugString("\n");
 #endif
 }
 

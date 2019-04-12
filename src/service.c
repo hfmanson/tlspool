@@ -433,7 +433,7 @@ static void process_command (struct command *cmd) {
 	tlog (TLOG_UNIXSOCK, LOG_DEBUG, "Processing command 0x%08x, passfd=%d", cmd->cmd.pio_cmd, cmd->passfd);
 	union pio_data *d = &cmd->cmd.pio_data;
 	if (is_callback (cmd)) {
-printf ("DEBUG: Processing callback command sent over fd=%d\n", cmd->clientfd);
+tlog (TLOG_UNIXSOCK, LOG_DEBUG, "DEBUG: Processing callback command sent over fd=%d\n", cmd->clientfd);
 		post_callback (cmd);
 		return;
 	}

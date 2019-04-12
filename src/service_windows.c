@@ -23,9 +23,6 @@
 #define PIPE_TIMEOUT 5000
 #define BUFSIZE 4096
 
-#define _tprintf printf
-#define _tmain main
-
 #define CONNECTING_STATE 0
 #define READING_STATE 1
 #define INSTANCES 4
@@ -59,7 +56,7 @@ static BOOL ConnectToNewClient(HANDLE hPipe, LPOVERLAPPED lpo)
 // Overlapped ConnectNamedPipe should return zero.
    if (fConnected)
    {
-      printf("ConnectNamedPipe failed with %d.\n", GetLastError());
+      tlog (TLOG_UNIXSOCK, LOG_CRIT, "ConnectNamedPipe failed with %d.\n", GetLastError());
       return 0;
    }
 
@@ -79,7 +76,7 @@ static BOOL ConnectToNewClient(HANDLE hPipe, LPOVERLAPPED lpo)
    // If an error occurs during the connect operation...
       default:
       {
-         printf("ConnectNamedPipe failed with %d.\n", GetLastError());
+         tlog (TLOG_UNIXSOCK, LOG_CRIT, "ConnectNamedPipe failed with %d.\n", GetLastError());
          return 0;
       }
    }
@@ -97,7 +94,7 @@ static VOID DisconnectAndReconnect(DWORD i)
 
    if (! DisconnectNamedPipe(Pipe[i].hPipeInst) )
    {
-      printf("DisconnectNamedPipe failed with %d.\n", GetLastError());
+      tlog (TLOG_UNIXSOCK, LOG_CRIT, "DisconnectNamedPipe failed with %d.\n", GetLastError());
    }
 
 // Call a subroutine to connect to the new client.
@@ -126,7 +123,7 @@ int os_send_command (struct command *cmd, int passfd)
 	// Send a message to the pipe server.
 
 	cbToWrite = sizeof (struct tlspool_command);
-	_tprintf(TEXT("Sending %d byte cmd\n"), cbToWrite);
+	tlog (TLOG_UNIXSOCK, LOG_DEBUG, TEXT("Sending %d byte cmd\n"), cbToWrite);
 
 	memset(&overlapped, 0, sizeof(overlapped));
 	overlapped.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
@@ -140,7 +137,7 @@ int os_send_command (struct command *cmd, int passfd)
 
 	if (!fSuccess && GetLastError() == ERROR_IO_PENDING )
 	{
-printf ("DEBUG: Write I/O pending\n");
+		tlog (TLOG_UNIXSOCK, LOG_DEBUG, "Write I/O pending\n");
 		fSuccess = WaitForSingleObject(overlapped.hEvent, INFINITE) == WAIT_OBJECT_0;
 	}
 
@@ -150,11 +147,11 @@ printf ("DEBUG: Write I/O pending\n");
 
 	if (!fSuccess)
 	{
-		_tprintf(TEXT("WriteFile to pipe failed. GLE=%d\n"), GetLastError());
+		tlog (TLOG_UNIXSOCK, LOG_CRIT, "WriteFile to pipe failed. GLE=%d\n", GetLastError());
 		errno = EPIPE;
 		return 0;
 	} else {
-printf ("DEBUG: Wrote %ld bytes to pipe\n", cbWritten);
+		tlog (TLOG_UNIXSOCK, LOG_DEBUG, "Wrote %ld bytes to pipe\n", cbWritten);
 		return 1;
 	}
 }
@@ -181,7 +178,7 @@ void os_run_service ()
 
       if (hEvents[i] == NULL)
       {
-         printf("CreateEvent failed with %d.\n", GetLastError());
+         tlog (TLOG_UNIXSOCK, LOG_CRIT, "CreateEvent failed with %d.\n", GetLastError());
       }
 
       Pipe[i].oOverlap.hEvent = hEvents[i];
@@ -201,7 +198,7 @@ void os_run_service ()
 
       if (Pipe[i].hPipeInst == INVALID_HANDLE_VALUE)
       {
-         printf("CreateNamedPipe failed with %d.\n", GetLastError());
+         tlog (TLOG_UNIXSOCK, LOG_CRIT, "CreateNamedPipe failed with %d.\n", GetLastError());
       }
 
    // Call the subroutine to connect to the new client
@@ -232,7 +229,7 @@ void os_run_service ()
       i = dwWait - WAIT_OBJECT_0;  // determines which pipe
       if (i < 0 || i > (INSTANCES - 1))
       {
-         printf("Index out of range.\n");
+         tlog (TLOG_UNIXSOCK, LOG_CRIT, "Index out of range.\n");
       }
 
    // Get the result if the operation was pending.
@@ -251,9 +248,9 @@ void os_run_service ()
             case CONNECTING_STATE:
                if (! fSuccess)
                {
-                   printf("Error %d.\n", GetLastError());
+                   tlog (TLOG_UNIXSOCK, LOG_CRIT, "Error %d.\n", GetLastError());
                }
-               printf("Connected.\n");
+               tlog (TLOG_UNIXSOCK, LOG_DEBUG, "Connected.\n");
                Pipe[i].dwState = READING_STATE;
                break;
 
@@ -261,11 +258,11 @@ void os_run_service ()
             case READING_STATE:
                if (!fSuccess)
                {
-                  printf("Error GLE = %ld\n", GetLastError());
+                  tlog (TLOG_UNIXSOCK, LOG_CRIT, "Error GLE = %ld\n", GetLastError());
                   DisconnectAndReconnect(i);
                   continue;
                }
-               printf("OK cbRet = %d.\n", cbRet);
+               tlog (TLOG_UNIXSOCK, LOG_DEBUG, "OK cbRet = %d.\n", cbRet);
                Pipe[i].cbRead = cbRet;
 				struct command *cmd = allocate_command_for_clientfd (&Pipe[i]);
 				Pipe[i].chRequest.hPipe = Pipe[i].hPipeInst;
@@ -277,7 +274,9 @@ void os_run_service ()
 						//cmd->passfd = cygwin_attach_handle_to_fd(NULL, -1, winsock, NULL, GENERIC_READ | GENERIC_WRITE);
 						//tlog (TLOG_UNIXSOCK, LOG_DEBUG, "Received file descriptor as %d, winsock = %d\n", cmd->passfd, winsock);
 						cmd->passfd = socket_from_protocol_info(&cmd->cmd.pio_ancil_data.pioa_socket);
-if (cmd->passfd == -1) printf("WSAGetLastError(void) = %d\n", WSAGetLastError());
+						if (cmd->passfd == -1) {
+							tlog (TLOG_UNIXSOCK, LOG_CRIT, "WSAGetLastError(void) = %d\n", WSAGetLastError());
+						}
 						tlog (TLOG_UNIXSOCK, LOG_DEBUG, "Received file descriptor as %d\n", cmd->passfd);
 					} else {
 						//int superfd = (int) WSASocket(FROM_PROTOCOL_INFO, FROM_PROTOCOL_INFO, FROM_PROTOCOL_INFO, &cmd->cmd.pio_ancil_data.pioa_socket, 0, 0);
@@ -291,7 +290,7 @@ if (cmd->passfd == -1) printf("WSAGetLastError(void) = %d\n", WSAGetLastError())
 
             default:
             {
-               printf("Invalid pipe state.\n");
+               tlog (TLOG_UNIXSOCK, LOG_CRIT, "Invalid pipe state.\n");
             }
          }
       }
@@ -326,11 +325,11 @@ if (cmd->passfd == -1) printf("WSAGetLastError(void) = %d\n", WSAGetLastError())
             dwErr = GetLastError();
             if (! fSuccess && (dwErr == ERROR_IO_PENDING))
             {
-               printf("read pending. %d\n", sizeof (Pipe[i].chRequest));
+               tlog (TLOG_UNIXSOCK, LOG_DEBUG, "read pending. %d\n", sizeof (Pipe[i].chRequest));
                Pipe[i].fPendingIO = TRUE;
                continue;
             }
-            printf("The read failed with %d.\n", GetLastError());
+            tlog (TLOG_UNIXSOCK, LOG_CRIT, "The read failed with %d.\n", GetLastError());
 
          // An error occurred; disconnect from the client.
 
@@ -339,7 +338,7 @@ if (cmd->passfd == -1) printf("WSAGetLastError(void) = %d\n", WSAGetLastError())
 
          default:
          {
-            printf("Invalid pipe state.\n");
+            tlog (TLOG_UNIXSOCK, LOG_CRIT, "Invalid pipe state.\n");
          }
       }
   }
