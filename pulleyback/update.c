@@ -12,7 +12,16 @@
 #include <stdlib.h>
 #include <assert.h>
 
+#if defined(__MINGW64__) || defined(_WIN32)
+#define WINDOWS_PORT
+#endif /* defined(__MINGW64__) || defined(_WIN32) */
+
+#ifndef WINDOWS_PORT
 #include <arpa/inet.h>
+#else
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#endif
 
 #include <db.h>
 

@@ -65,7 +65,6 @@ add_test(
 )
 endif()
 
-if(NOT "${CMAKE_HOST_SYSTEM}" MATCHES ".*Windows.*")
 ### Pulleyback Simulation
 #
 #
@@ -78,7 +77,7 @@ add_test(
     COMMAND pulleybacksimu
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
-endif()
+
 ### Run testcli and testsrv under Pypeline
 #
 #
