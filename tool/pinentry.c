@@ -15,6 +15,19 @@
 #include <tlspool/starttls.h>
 
 
+#if  defined(__CYGWIN__) || defined(__MINGW64__) || defined(_WIN32)
+/*
+ * Poor man's getpass
+ */
+
+char *getpass(const char *prompt) {
+	static char password[256];
+	printf("%s", prompt);
+	scanf("%s", password);
+	return password;
+}
+#endif
+
 void pincb (pinentry_t *entry, void *null_data) {
 	char *pwd;
 	printf ("\n***** PIN ENTRY REQUEST FROM THE TLS POOL *****\n"

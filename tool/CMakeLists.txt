@@ -39,11 +39,11 @@ target_link_libraries(tlspool-ping tlspool_shared ${pthread_LIBRARIES})
 #add_executable(tlspool-ping-async pingpool-async.c)
 #target_link_libraries(tlspool-ping-async tlspool_async_shared ${pthread_LIBRARIES})
 
-#add_executable(tlspool-localid-select lidsel.c)
-#target_link_libraries(tlspool-localid-select tlspool_shared ${pthread_LIBRARIES})
+add_executable(tlspool-localid-select lidsel.c)
+target_link_libraries(tlspool-localid-select tlspool_shared ${pthread_LIBRARIES})
 
-#add_executable(tlspool-pin-entry pinentry.c)
-#target_link_libraries(tlspool-pin-entry tlspool_shared ${pthread_LIBRARIES})
+add_executable(tlspool-pin-entry pinentry.c)
+target_link_libraries(tlspool-pin-entry tlspool_shared ${pthread_LIBRARIES})
 
 add_executable(tlspool-localid-get get_localid.c)
 target_link_libraries(tlspool-localid-get tlspool_shared ${BDB_LIBRARY} ${pthread_LIBRARIES})
@@ -83,8 +83,8 @@ install(
 		tlspool-localid-get
 		tlspool-trust-get
 		tlspool-db-have
-		#tlspool-localid-select
-		#tlspool-pin-entry
+		tlspool-localid-select
+		tlspool-pin-entry
 		tlspool-ping
 		#tlspool-ping-async
 		tlspool-disclose-set

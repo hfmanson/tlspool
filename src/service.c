@@ -463,11 +463,9 @@ tlog (TLOG_UNIXSOCK, LOG_DEBUG, "DEBUG: Processing callback command sent over fd
 	case PIOC_CONTROL_REATTACH_V2:
 		ctlkey_reattach (cmd);
 		return;
-#ifndef WINDOWS_PORT
 	case PIOC_PINENTRY_V2:
 		register_pinentry_command (cmd);
 		return;
-#endif
 	case PIOC_LIDENTRY_REGISTER_V2:
 		register_lidentry_command (cmd);
 		return;

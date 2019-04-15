@@ -411,6 +411,52 @@ static void registry_recvmsg (struct registry_entry *entry) {
 }
 
 
+int tlspool_execute_command (char *path, struct tlspool_command *cmd, int expected_response) {
+	pthread_mutex_t recvwait = PTHREAD_MUTEX_INITIALIZER;
+	struct registry_entry regent = { .sig = &recvwait, .buf = cmd };
+	int entry_reqid = -1;
+	pool_handle_t poolfd = INVALID_POOL_HANDLE;
+	int rc = 0;
+	
+	/* Prepare command structure */
+	poolfd = tlspool_open_poolhandle (path);
+// printf ("DEBUG: poolfd = %d\n", poolfd);
+	if (poolfd == INVALID_POOL_HANDLE) {
+		errno = ENODEV;
+		return -1;
+	}
+	/* Finish setting up the registry entry */
+	regent.pfd = poolfd;
+	pthread_mutex_lock (&recvwait);		// Will await unlock by master
+	/* Determine the request ID */
+	if (registry_update (&entry_reqid, &regent) != 0) {
+		errno = EBUSY;
+		return -1;
+	}
+	cmd->pio_reqid = entry_reqid;
+	if (os_sendmsg_command (poolfd, cmd, -1) == -1) {
+		// Let SIGPIPE be reported as EPIPE
+		registry_update (&entry_reqid, NULL);
+		// errno inherited from sendmsg()
+		return -1;
+	}
+	/* Await response and process it */
+	registry_recvmsg (&regent);
+	registry_update (&entry_reqid, NULL);
+	if (cmd->pio_cmd == PIOC_ERROR_V2) {
+		/* Bad luck, we failed */
+		syslog (LOG_INFO, "TLS Pool error to tlspool_execute_command(): %s", cmd->pio_data.pioc_error.message);
+		errno = cmd->pio_data.pioc_error.tlserrno;
+		rc = -1;
+	} else if (cmd->pio_cmd != expected_response) {
+		syslog (LOG_CRIT, "TLS Pool error to tlspool_execute_command(): unexpected response");
+		/* V2 protocol error */
+		errno = EPROTO;
+		rc = -1;
+	}
+	return rc;
+}
+
 /* The library function for ping, which is called to establish the API
  * version and a list of facilities supported by the TLS Pool.  The data
  * supplied to the TLS Pool should represent the environment of the
@@ -430,57 +476,19 @@ static void registry_recvmsg (struct registry_entry *entry) {
  */
 int tlspool_ping (pingpool_t *pingdata) {
 	struct tlspool_command cmd;
-	pthread_mutex_t recvwait = PTHREAD_MUTEX_INITIALIZER;
-	struct registry_entry regent = { .sig = &recvwait, .buf = &cmd };
-	int entry_reqid = -1;
-	pool_handle_t poolfd = INVALID_POOL_HANDLE;
-
-	/* Prepare command structure */
-	poolfd = tlspool_open_poolhandle (NULL);
-// printf ("DEBUG: poolfd = %d\n", poolfd);
-	if (poolfd == INVALID_POOL_HANDLE) {
-		errno = ENODEV;
-		return -1;
-	}
-	/* Finish setting up the registry entry */
-	regent.pfd = poolfd;
-	pthread_mutex_lock (&recvwait);		// Will await unlock by master
-	/* Determine the request ID */
-	if (registry_update (&entry_reqid, &regent) != 0) {
-		errno = EBUSY;
-		return -1;
-	}
+	int rc;
+	
 	memset (&cmd, 0, sizeof (cmd));	/* Do not leak old stack info */
-	cmd.pio_reqid = entry_reqid;
 	cmd.pio_cbid = 0;
 	cmd.pio_cmd = PIOC_PING_V2;
 	memcpy (&cmd.pio_data.pioc_ping, pingdata, sizeof (struct pioc_ping));
-	if (os_sendmsg_command (poolfd, &cmd, -1) == -1) {
-		// Let SIGPIPE be reported as EPIPE
-		registry_update (&entry_reqid, NULL);
-		// errno inherited from sendmsg()
-		return -1;
-	}
-	/* Await response and process it */
-	registry_recvmsg (&regent);
-	registry_update (&entry_reqid, NULL);
-	switch (cmd.pio_cmd) {
-	case PIOC_ERROR_V2:
-		/* Bad luck, we failed */
-		syslog (LOG_INFO, "TLS Pool error to tlspool_ping(): %s", cmd.pio_data.pioc_error.message);
-		errno = cmd.pio_data.pioc_error.tlserrno;
-		return -1;
-	case PIOC_PING_V2:
+	rc = tlspool_execute_command (NULL, &cmd, PIOC_PING_V2);
+	if (rc == 0) {
 		/* Wheee!!! we're done */
 		memcpy (pingdata, &cmd.pio_data.pioc_ping, sizeof (pingpool_t));
-		return 0;
-	default:
-		/* V2 protocol error */
-		errno = EPROTO;
-		return -1;
 	}
+	return rc;
 }
-
 
 /* The library function for starttls, which is normally called through one
  * of the two inline variations below, which start client and server sides.
@@ -618,7 +626,7 @@ int tlspool_starttls (int cryptfd, starttls_t *tlsdata,
 		case PIOC_STARTTLS_LOCALID_V2:
 		case PIOC_PLAINTEXT_CONNECT_V2:
 			if (namedconnect) {
-				fprintf (stderr, "Callback to check local id or provide plaintext fd for localid=%s\n", cmd.pio_data.pioc_starttls.localid);
+				syslog (LOG_INFO, "Callback to check local id or provide plaintext fd for localid=%s\n", cmd.pio_data.pioc_starttls.localid);
 				plainfd = (*namedconnect) (&cmd.pio_data.pioc_starttls, privdata);
 			} else {
 				/* default namedconnect() implementation */

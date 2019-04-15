@@ -74,7 +74,7 @@ vsyslog(int priority, const char *format, va_list ap) {
 	char buf[1024];
 
 	vsprintf(buf, format, ap);
-	OutputDebugString(buf);
+	fprintf(stderr, "%s\n", buf);
 #endif
 }
 
