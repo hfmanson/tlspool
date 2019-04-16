@@ -249,7 +249,7 @@ int os_recvmsg_command(pool_handle_t poolfd, struct tlspool_command *cmd) {
 	if (fSuccess) {
 		fSuccess = GetOverlappedResult(poolfd, &overlapped, &cbRead, TRUE);
 	}
-
+	CloseHandle(overlapped.hEvent);
 	if (!fSuccess)
 	{
 		syslog(LOG_CRIT, "ReadFile from pipe failed. GLE=%d\n", GetLastError());
