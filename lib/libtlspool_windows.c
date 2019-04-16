@@ -157,10 +157,12 @@ static pool_handle_t open_named_pipe (LPCTSTR lpszPipename)
 }
 
 int os_sendmsg_command(pool_handle_t poolfd, struct tlspool_command *cmd, int fd) {
-	DWORD  cbToWrite, cbWritten;
+	DWORD      cbToWrite;
+	DWORD      cbWritten;
 	OVERLAPPED overlapped;
-	BOOL fSuccess;
-
+	BOOL       fSuccess;
+	int        rc;
+	
 	if (fd >= 0) {
 		if (1 /*is_sock(wsock)*/) {
 			// Send a socket
@@ -210,17 +212,18 @@ int os_sendmsg_command(pool_handle_t poolfd, struct tlspool_command *cmd, int fd
 	if (fSuccess) {
 		fSuccess = GetOverlappedResult(poolfd, &overlapped, &cbWritten, TRUE);
 	}
-
+	CloseHandle(overlapped.hEvent);
 	if (!fSuccess)
 	{
 		syslog(LOG_CRIT, "WriteFile to pipe failed. GLE=%d\n", GetLastError());
 		errno = EPIPE;
-		return -1;
+		rc = -1;
 	} else {
 // printf ("DEBUG: Wrote %ld bytes to pipe\n", cbWritten);
+		rc = (int) cbWritten;
 	}
 // printf("DEBUG: Message sent to server, receiving reply as follows:\n");
-	return 0;
+	return rc;
 }
 
 int os_recvmsg_command(pool_handle_t poolfd, struct tlspool_command *cmd) {
