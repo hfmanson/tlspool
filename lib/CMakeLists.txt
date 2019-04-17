@@ -3,7 +3,9 @@ set(libtlspool_SRC
 	libtlspool_lidentry.c
 	libtlspool_pinentry.c
 	libtlspool_configvar.c
+	libtlspool_async.c
 )
+
 if("${CMAKE_HOST_SYSTEM}" MATCHES ".*Windows.*")
 	set(libtlspool_SRC
 		${libtlspool_SRC}
@@ -11,6 +13,7 @@ if("${CMAKE_HOST_SYSTEM}" MATCHES ".*Windows.*")
 		windows/socketpair.c
 	)
 endif()
+
 set(libpavlov_SRC
     libpavlov.c
 )
@@ -35,7 +38,7 @@ set_target_properties(tlspool_static PROPERTIES
 )
 
 if("${CMAKE_HOST_SYSTEM}" MATCHES ".*Windows.*")
-	target_link_libraries(tlspool_shared -lwsock32 -lws2_32)
+	target_link_libraries(tlspool_shared wsock32 ws2_32)
 endif()
 
 # The pavlov library
@@ -47,8 +50,10 @@ add_library(pavlov_static STATIC $<TARGET_OBJECTS:_libpavlov>)
 set_target_properties(pavlov_static PROPERTIES
     OUTPUT_NAME pavlov
 )
-if("${CMAKE_HOST_SYSTEM}" MATCHES ".*Windows.*")
-	target_link_libraries(pavlov_shared wsock32 ws2_32 gnurx)
+
+# POSIX extended regex on Windows sits in a separate library, gnurx
+if ("${CMAKE_HOST_SYSTEM}" MATCHES ".*Windows.*")
+    target_link_libraries (pavlov_shared wsock32 ws2_32 gnurx)
 endif()
 
 install(

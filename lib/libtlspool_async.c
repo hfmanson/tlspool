@@ -22,27 +22,18 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/un.h>
-
 #include <tlspool/async.h>
 #include <tlspool/starttls.h>
 
-
 #ifdef WINDOWS_PORT
-/* Our main purpose with the asynchronous API is simplicity.
- * You can say a lot about the Windows platform, but not
- * that it is simple.  We may not be able to support it.
- *
- * Instead, what we could do is simulate the API on top of
- * the synchronous default API for Windows.  If we do this,
- * we should do it in such a manner that tools like libev
- * continue to work.
- */
-#error "The asynchronous API is not available on Windows"
-#endif
+#define random rand
+#define srandom srand
+int os_recvmsg_command_no_wait(pool_handle_t poolfd, struct tlspool_command *cmd);
+#endif /* WINDOWS_PORT */
 
+pool_handle_t open_pool (void *path);
+int os_sendmsg_command(pool_handle_t poolfd, struct tlspool_command *cmd, int fd);
+int os_recvmsg_command(pool_handle_t poolfd, struct tlspool_command *cmd);
 
 /* Initialise a new asynchronous TLS Pool handle.
  * This opens a socket, embedded into the pool
@@ -74,7 +65,7 @@ bool tlspool_async_open (struct tlspool_async_pool *pool,
 			char *tlspool_identity,
 			uint32_t required_facilities,
 			char *socket_path) {
-	int sox = -1;
+	pool_handle_t pool_handle = INVALID_POOL_HANDLE;
 	//
 	// Validate expectations of the caller
 	if (sizeof (struct tlspool_command) != sizeof_tlspool_command) {
@@ -95,25 +86,10 @@ bool tlspool_async_open (struct tlspool_async_pool *pool,
 	pool->cmdsize = sizeof_tlspool_command;
 	//
 	// Open the handle to the TLS Pool
-#ifndef WINDOWS_PORT
-	struct sockaddr_un sun;
-	memset (&sun, 0, sizeof (sun));
-	strcpy (sun.sun_path, socket_path);
-	sun.sun_family = AF_UNIX;
-	sox = socket (AF_UNIX, SOCK_STREAM, 0);
-	if (sox == -1) {
+	pool_handle = open_pool (socket_path);
+	if (pool_handle == INVALID_POOL_HANDLE) {
 		goto fail_handle;
 	}
-	if (connect (sox, (struct sockaddr *) &sun, SUN_LEN (&sun)) != 0) {
-		goto fail_handle_close;
-	}
-#else
-	sox = open_named_pipe ((LPCTSTR) socket_path);
-	if (sox == INVALID_POOL_HANDLE) {
-		//TODO// errno = ... (if not set yet)
-		return false;
-	}
-#endif
 	//
 	// If requested, perform a synchronous ping.
 	// This code is needed once in any program,
@@ -133,11 +109,12 @@ bool tlspool_async_open (struct tlspool_async_pool *pool,
 		poolcmd.pio_data.pioc_ping.facilities = required_facilities | PIOF_FACILITY_ALL_CURRENT;
 		//
 		// Send the request and await its response -- no contenders makes life easy
-		if (send (sox, &poolcmd, sizeof (poolcmd), MSG_NOSIGNAL) != sizeof (poolcmd)) {
+		if (os_sendmsg_command (pool_handle, &poolcmd, -1) == -1) {
 			errno = EPROTO;
 			goto fail_handle_close;
 		}
-		if (recv (sox, &poolcmd, sizeof (poolcmd), MSG_NOSIGNAL) != sizeof (poolcmd)) {
+
+		if (os_recvmsg_command(pool_handle, &poolcmd) != sizeof (poolcmd)) {
 			errno = EPROTO;
 			goto fail_handle_close;
 		}
@@ -149,25 +126,25 @@ bool tlspool_async_open (struct tlspool_async_pool *pool,
 			goto fail_handle_close;
 		}
 	}
+#ifndef WINDOWS_PORT	
 	//
 	// Make the connection non-blocking
-	int soxflags = fcntl (sox, F_GETFL, 0);
-	if (fcntl (sox, F_SETFL, soxflags | O_NONBLOCK) != 0) {
+	int soxflags = fcntl (pool_handle, F_GETFL, 0);
+	if (fcntl (pool_handle, F_SETFL, soxflags | O_NONBLOCK) != 0) {
 		goto fail_handle_close;
 	}
+#endif	
 	//
 	// Report success
-	pool->handle = sox;
+	pool->handle = pool_handle;
 	return true;
 	//
 	// Report failure
-#ifndef WINDOWS_PORT
 fail_handle_close:
-	close (sox);
+	tlspool_close_poolhandle (pool_handle);
 fail_handle:
-	pool->handle = -1;
+	pool->handle = INVALID_POOL_HANDLE;
 	return false;
-#endif
 }
 
 
@@ -199,32 +176,7 @@ bool tlspool_async_request (struct tlspool_async_pool *pool,
 	//LIST_STYLE// DL_APPEND (pool->requests, reqcb);
 	//
 	// Construct the message to send -- including opt_fd, if any
-	struct iovec iov;
-	struct cmsghdr *cmsg;
-	struct msghdr mh;
-	char anc [CMSG_SPACE(sizeof(int))];
-	memset (&mh, 0, sizeof (mh));   /* do not leak stack contents */
-	memset (&iov, 0, sizeof (iov));
-	iov.iov_base = &reqcb->cmd;
-	iov.iov_len = sizeof (struct tlspool_command);
-	mh.msg_iov = &iov;
-	mh.msg_iovlen = 1;
-	if (opt_fd >= 0) {
-		mh.msg_control = anc;
-		mh.msg_controllen = sizeof (anc);
-		cmsg = CMSG_FIRSTHDR (&mh);
-		cmsg->cmsg_level = SOL_SOCKET;
-		cmsg->cmsg_type = SCM_RIGHTS;
-		*(int *)CMSG_DATA(cmsg) = opt_fd;	/* cannot close it yet */
-		cmsg->cmsg_len = CMSG_LEN(sizeof(int));
-	}
-	//
-	// Send the request to the TLS Pool
-#ifdef WINDOWS_PORT
-	ssize_t sent = np_send_command (&poolcmd);
-#else
-	ssize_t sent = sendmsg (pool->handle, &mh, MSG_NOSIGNAL);
-#endif
+	ssize_t sent = os_sendmsg_command (pool->handle, &reqcb->cmd, opt_fd);
 	if (sent < sizeof (struct tlspool_command)) {
 		/* Sending failed; drill down to see why */
 		if (sent == 0) {
@@ -236,7 +188,11 @@ bool tlspool_async_request (struct tlspool_async_pool *pool,
 			goto fail;
 		}
 		/* Sending to the socket is no longer reliable */
+#ifndef WINDOWS_PORT		
 		shutdown (pool->handle, SHUT_WR);
+#else
+		tlspool_close_poolhandle (pool->handle);
+#endif
 		errno = EPROTO;
 		goto fail;
 	}
@@ -286,29 +242,22 @@ bool tlspool_async_cancel (struct tlspool_async_pool *pool,
  */
 bool tlspool_async_process (struct tlspool_async_pool *pool) {
 	//
-	// Start a loop reading from the TLS Pool
+	// Start a loop reading from the TLS Pool	
 	while (true) {
 		//
 		// Reception structures
 		// Note that we do not receive file descriptors
 		// (maybe later -- hence opt_fd in the callback)
 		struct tlspool_command poolcmd;
-		struct iovec iov;
-		struct cmsghdr *cmsg;
-		struct msghdr mh = { 0 };
-		//NOT-USED// char anc [CMSG_SPACE(sizeof(int))];
 		//
 		// Prepare memory structures for reception
 		memset (&poolcmd, 0, sizeof (poolcmd));   /* never, ever leak stack data */
-		iov.iov_base = &poolcmd;
-		iov.iov_len = sizeof (poolcmd);
-		mh.msg_iov = &iov;
-		mh.msg_iovlen = 1;
-		//NOT-USED// mh.msg_control = anc;
-		//NOT-USED// mh.msg_controllen = sizeof (anc);
-		//
 		// Receive the message and weigh the results
-		ssize_t recvd = recvmsg (pool->handle, &mh, MSG_NOSIGNAL);
+#ifndef WINDOWS_PORT		
+		ssize_t recvd = os_recvmsg_command(pool->handle, &poolcmd);
+#else
+		ssize_t recvd = os_recvmsg_command_no_wait(pool->handle, &poolcmd);
+#endif
 		if (recvd < sizeof (struct tlspool_command)) {
 			/* Reception failed; drill down to see why */
 			if (recvd == 0) {
@@ -324,8 +273,8 @@ bool tlspool_async_process (struct tlspool_async_pool *pool) {
 				}
 			}
 			/* Receiving from the socket is no longer reliable */
-			close (pool->handle);
-			pool->handle = -1;
+			tlspool_close_poolhandle (pool->handle);
+			pool->handle = INVALID_POOL_HANDLE;
 			errno = EPROTO;
 			return false;
 		}
@@ -365,8 +314,8 @@ bool tlspool_async_close (struct tlspool_async_pool *pool,
 				bool close_socket) {
 	//
 	// Should we try to close the underlying socket
-	if (close_socket && (pool->handle >= 0)) {
-		close (pool->handle);
+	if (close_socket && (pool->handle != INVALID_POOL_HANDLE)) {
+		tlspool_close_poolhandle (pool->handle);
 	}
 	//
 	// Locally clone the hash of pending requests

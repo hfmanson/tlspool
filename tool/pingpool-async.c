@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include <assert.h>
 
-#include <tlspool/commands.h>
+#include <tlspool/starttls.h>
 #include <tlspool/async.h>
 
 

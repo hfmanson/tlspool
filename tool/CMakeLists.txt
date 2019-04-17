@@ -39,8 +39,8 @@ target_link_libraries(tlspeer tlspool_shared pavlov_shared ${pthread_LIBRARIES} 
 add_executable(tlspool-ping pingpool.c)
 target_link_libraries(tlspool-ping tlspool_shared ${pthread_LIBRARIES})
 
-#add_executable(tlspool-ping-async pingpool-async.c)
-#target_link_libraries(tlspool-ping-async tlspool_async_shared ${pthread_LIBRARIES})
+add_executable(tlspool-ping-async pingpool-async.c)
+target_link_libraries(tlspool-ping-async tlspool_shared ${pthread_LIBRARIES})
 
 add_executable(tlspool-localid-select lidsel.c)
 target_link_libraries(tlspool-localid-select tlspool_shared ${pthread_LIBRARIES})
@@ -89,7 +89,7 @@ install(
 		tlspool-localid-select
 		tlspool-pin-entry
 		tlspool-ping
-		#tlspool-ping-async
+		tlspool-ping-async
 		tlspool-disclose-set
 		tlspool-localid-set
 		tlspool-trust-set

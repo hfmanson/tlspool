@@ -6,27 +6,7 @@
 
 #include <tlspool/uthash.h>
 //LIST_STYLE// #include <tlspool/utlist.h>
-#include <tlspool/commands.h>
-
-
-#ifdef WINDOWS_PORT
-/* Our main purpose with the asynchronous API is simplicity.
- * You can say a lot about the Windows platform, but not
- * that it is simple.  We may not be able to support it.
- *
- * Instead, what we could do is simulate the API on top of
- * the synchronous default API for Windows.  If we do this,
- * we should do it in such a manner that tools like libev
- * continue to work.
- */
-#error "The asynchronous API is not available on Windows"
-#endif
-
-
-/* POSIX pool handle type.
- */
-typedef int pool_handle_t;
-
+#include <tlspool/starttls.h>
 
 /* The tlspool_async_request structure manages
  * a single pending request.  Once a response arrives,
