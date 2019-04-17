@@ -243,6 +243,7 @@ int os_recvmsg_command(pool_handle_t poolfd, struct tlspool_command *cmd) {
 		NULL,         // number of bytes read
 		&overlapped); // not overlapped
 
+// printf ("DEBUG: os_recvmsg_command, after Readfile, fSuccess = %d\n", fSuccess);
 	if (!fSuccess && GetLastError() == ERROR_IO_PENDING )
 	{
 // printf ("DEBUG: Read I/O pending\n");
@@ -263,6 +264,23 @@ int os_recvmsg_command(pool_handle_t poolfd, struct tlspool_command *cmd) {
 	}
 	return retval;
 }
+
+int os_recvmsg_command_no_wait(pool_handle_t poolfd, struct tlspool_command *cmd) {
+	DWORD  TotalBytesAvail;
+	BOOL   fSuccess;
+	int    retval;
+	
+	fSuccess = PeekNamedPipe(poolfd, NULL, 0, NULL, &TotalBytesAvail, NULL);
+	if (fSuccess) {
+// printf ("DEBUG: os_recvmsg_command_no_wait, TotalBytesAvail = %ld\n", TotalBytesAvail);
+		retval = TotalBytesAvail == 0 ? 0 : os_recvmsg_command(poolfd, cmd);
+	} else {
+		syslog(LOG_CRIT, "PeekNamedPipe from pipe failed. GLE=%d\n", GetLastError());
+		retval = -1;
+	}
+	return retval;
+}
+
 pool_handle_t open_pool (void *path) {
 // printf ("DEBUG: path = %s\n", (char *) path);
 	return open_named_pipe ((LPCTSTR) path);
