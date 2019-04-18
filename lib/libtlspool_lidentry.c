@@ -37,7 +37,7 @@ int tlspool_execute_command (char *path, struct tlspool_command *cmd, int expect
  * This function returns -1 on error, or 0 on success.
  */
 int tlspool_localid_service (char *path, uint32_t regflags, int responsetimeout, char * (*cb) (lidentry_t *entry, void *data), void *data) {
-	pool_handle_t pool_handle = INVALID_POOL_HANDLE;
+	int pool_handle = -1;
 	struct tlspool_command cmd;
 	char *cberr = NULL;
 	int  rc = 0;

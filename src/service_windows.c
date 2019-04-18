@@ -264,7 +264,7 @@ void os_run_service ()
                }
                tlog (TLOG_UNIXSOCK, LOG_DEBUG, "OK cbRet = %d.\n", cbRet);
                Pipe[i].cbRead = cbRet;
-				struct command *cmd = allocate_command_for_clientfd (&Pipe[i]);
+				struct command *cmd = allocate_command_for_clientfd((int) &Pipe[i]);
 				Pipe[i].chRequest.hPipe = Pipe[i].hPipeInst;
 				copy_tls_command (cmd, &Pipe[i].chRequest);
 				if (cmd->cmd.pio_ancil_type == ANCIL_TYPE_SOCKET) {

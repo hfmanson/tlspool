@@ -43,7 +43,7 @@ struct tlspool_async_request {
  * with its output.
  */
 struct tlspool_async_pool {
-	pool_handle_t handle;
+	int handle;
 	size_t cmdsize;
 	struct tlspool_async_request *requests;
 	struct pioc_ping pingdata;
@@ -127,5 +127,5 @@ bool tlspool_async_close (struct tlspool_async_pool *pool,
 				bool close_socket);
 
 
-//TODO// How to register with an event loop?  The pool_handle_t is strange on Windows...
+//TODO// How to register with an event loop?  The int is strange on Windows...
 

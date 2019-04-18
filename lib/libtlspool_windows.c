@@ -96,7 +96,7 @@ int tlspool_namedconnect_default (starttls_t *tlsdata, void *privdata) {
 	return plainfd;
 }
 
-static pool_handle_t open_named_pipe (LPCTSTR lpszPipename)
+static int open_named_pipe (LPCTSTR lpszPipename)
 {
 	HANDLE hPipe;
 	//struct tlspool_command chBuf;
@@ -118,21 +118,21 @@ static pool_handle_t open_named_pipe (LPCTSTR lpszPipename)
 			NULL);          // no template file
 
 		// Break if the pipe handle is valid.
-		if (hPipe != INVALID_POOL_HANDLE)
+		if (hPipe != INVALID_HANDLE_VALUE)
 			break;
 
 		// Exit if an error other than ERROR_PIPE_BUSY occurs.
 		if (GetLastError() != ERROR_PIPE_BUSY)
 		{
 			syslog(LOG_CRIT, "Could not open pipe. GLE=%d\n", GetLastError());
-			return INVALID_POOL_HANDLE;
+			return -1;
 		}
 
 		// All pipe instances are busy, so wait for 20 seconds.
 		if (!WaitNamedPipe(lpszPipename, 20000))
 		{
 			syslog(LOG_CRIT, "Could not open pipe: 20 second wait timed out.");
-			return INVALID_POOL_HANDLE;
+			return -1;
 		}
 	}
 	// The pipe connected; change to message-read mode.
@@ -145,7 +145,7 @@ static pool_handle_t open_named_pipe (LPCTSTR lpszPipename)
 	if (!fSuccess)
 	{
 		syslog(LOG_CRIT, "SetNamedPipeHandleState failed. GLE=%d\n", GetLastError());
-		return INVALID_POOL_HANDLE;
+		return -1;
 	}
 	ULONG ServerProcessId;
 	if (GetNamedPipeServerProcessId(hPipe, &ServerProcessId)) {
@@ -153,22 +153,24 @@ static pool_handle_t open_named_pipe (LPCTSTR lpszPipename)
 	} else {
 		syslog(LOG_CRIT, "GetNamedPipeServerProcessId failed. GLE=%d\n", GetLastError());
 	}
-	return hPipe;
+	return _open_osfhandle((intptr_t) hPipe, 0);
 }
 
-int os_sendmsg_command(pool_handle_t poolfd, struct tlspool_command *cmd, int fd) {
+int os_sendmsg_command(int poolfd, struct tlspool_command *cmd, int fd) {
 	DWORD      cbToWrite;
 	DWORD      cbWritten;
 	OVERLAPPED overlapped;
 	BOOL       fSuccess;
 	int        rc;
+	HANDLE     hPipe;
 	
+	hPipe = (HANDLE) _get_osfhandle(poolfd);
 	if (fd >= 0) {
 		if (1 /*is_sock(wsock)*/) {
 			// Send a socket
 			LONG pid;
 			
-			GetNamedPipeServerProcessId(poolfd, &pid);
+			GetNamedPipeServerProcessId(hPipe, &pid);
 			cmd->pio_ancil_type = ANCIL_TYPE_SOCKET;
 			syslog(LOG_DEBUG, "DEBUG: pid = %d, fd = %d\n", pid, fd);
 			if (socket_dup_protocol_info(fd, pid, &cmd->pio_ancil_data.pioa_socket) == -1) {
@@ -197,7 +199,7 @@ int os_sendmsg_command(pool_handle_t poolfd, struct tlspool_command *cmd, int fd
 	overlapped.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 
 	fSuccess = WriteFile(
-		poolfd,                  // pipe handle
+		hPipe,                  // pipe handle
 		cmd,                    // cmd message
 		cbToWrite,              // cmd message length
 		NULL,                  // bytes written
@@ -210,7 +212,7 @@ int os_sendmsg_command(pool_handle_t poolfd, struct tlspool_command *cmd, int fd
 	}
 
 	if (fSuccess) {
-		fSuccess = GetOverlappedResult(poolfd, &overlapped, &cbWritten, TRUE);
+		fSuccess = GetOverlappedResult(hPipe, &overlapped, &cbWritten, TRUE);
 	}
 	CloseHandle(overlapped.hEvent);
 	if (!fSuccess)
@@ -226,18 +228,20 @@ int os_sendmsg_command(pool_handle_t poolfd, struct tlspool_command *cmd, int fd
 	return rc;
 }
 
-int os_recvmsg_command(pool_handle_t poolfd, struct tlspool_command *cmd) {
+int os_recvmsg_command(int poolfd, struct tlspool_command *cmd) {
 	BOOL   fSuccess = FALSE;
 	DWORD  cbRead;
 	OVERLAPPED overlapped;
-	int retval;
+	int retval;	
+	HANDLE     hPipe;
 	
+	hPipe = (HANDLE) _get_osfhandle(poolfd);
 	memset(&overlapped, 0, sizeof(overlapped));
 	overlapped.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 
 	// Read from the pipe.
 	fSuccess = ReadFile(
-		poolfd,       // pipe handle
+		hPipe,       // pipe handle
 		cmd,         // buffer to receive reply
 		sizeof (struct tlspool_command), // size of buffer
 		NULL,         // number of bytes read
@@ -251,7 +255,7 @@ int os_recvmsg_command(pool_handle_t poolfd, struct tlspool_command *cmd) {
 	}
 
 	if (fSuccess) {
-		fSuccess = GetOverlappedResult(poolfd, &overlapped, &cbRead, TRUE);
+		fSuccess = GetOverlappedResult(hPipe, &overlapped, &cbRead, TRUE);
 	}
 	CloseHandle(overlapped.hEvent);
 	if (!fSuccess)
@@ -265,12 +269,14 @@ int os_recvmsg_command(pool_handle_t poolfd, struct tlspool_command *cmd) {
 	return retval;
 }
 
-int os_recvmsg_command_no_wait(pool_handle_t poolfd, struct tlspool_command *cmd) {
+int os_recvmsg_command_no_wait(int poolfd, struct tlspool_command *cmd) {
 	DWORD  TotalBytesAvail;
 	BOOL   fSuccess;
 	int    retval;
+	HANDLE     hPipe;
 	
-	fSuccess = PeekNamedPipe(poolfd, NULL, 0, NULL, &TotalBytesAvail, NULL);
+	hPipe = (HANDLE) _get_osfhandle(poolfd);	
+	fSuccess = PeekNamedPipe(hPipe, NULL, 0, NULL, &TotalBytesAvail, NULL);
 	if (fSuccess) {
 // printf ("DEBUG: os_recvmsg_command_no_wait, TotalBytesAvail = %ld\n", TotalBytesAvail);
 		retval = TotalBytesAvail == 0 ? 0 : os_recvmsg_command(poolfd, cmd);
@@ -281,7 +287,7 @@ int os_recvmsg_command_no_wait(pool_handle_t poolfd, struct tlspool_command *cmd
 	return retval;
 }
 
-pool_handle_t open_pool (void *path) {
+int open_pool (void *path) {
 // printf ("DEBUG: path = %s\n", (char *) path);
 	return open_named_pipe ((LPCTSTR) path);
 // printf ("DEBUG: newpoolfd = %d\n", newpoolfd);

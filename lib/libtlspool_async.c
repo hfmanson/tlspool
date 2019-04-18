@@ -28,12 +28,14 @@
 #ifdef WINDOWS_PORT
 #define random rand
 #define srandom srand
-int os_recvmsg_command_no_wait(pool_handle_t poolfd, struct tlspool_command *cmd);
+int os_recvmsg_command_no_wait(int poolfd, struct tlspool_command *cmd);
+#else
+#include <sys/socket.h>
 #endif /* WINDOWS_PORT */
 
-pool_handle_t open_pool (void *path);
-int os_sendmsg_command(pool_handle_t poolfd, struct tlspool_command *cmd, int fd);
-int os_recvmsg_command(pool_handle_t poolfd, struct tlspool_command *cmd);
+int open_pool (void *path);
+int os_sendmsg_command(int poolfd, struct tlspool_command *cmd, int fd);
+int os_recvmsg_command(int poolfd, struct tlspool_command *cmd);
 
 /* Initialise a new asynchronous TLS Pool handle.
  * This opens a socket, embedded into the pool
@@ -65,7 +67,7 @@ bool tlspool_async_open (struct tlspool_async_pool *pool,
 			char *tlspool_identity,
 			uint32_t required_facilities,
 			char *socket_path) {
-	pool_handle_t pool_handle = INVALID_POOL_HANDLE;
+	int pool_handle = -1;
 	//
 	// Validate expectations of the caller
 	if (sizeof (struct tlspool_command) != sizeof_tlspool_command) {
@@ -87,7 +89,7 @@ bool tlspool_async_open (struct tlspool_async_pool *pool,
 	//
 	// Open the handle to the TLS Pool
 	pool_handle = open_pool (socket_path);
-	if (pool_handle == INVALID_POOL_HANDLE) {
+	if (pool_handle < 0) {
 		goto fail_handle;
 	}
 	//
@@ -143,7 +145,7 @@ bool tlspool_async_open (struct tlspool_async_pool *pool,
 fail_handle_close:
 	tlspool_close_poolhandle (pool_handle);
 fail_handle:
-	pool->handle = INVALID_POOL_HANDLE;
+	pool->handle = -1;
 	return false;
 }
 
@@ -274,7 +276,7 @@ bool tlspool_async_process (struct tlspool_async_pool *pool) {
 			}
 			/* Receiving from the socket is no longer reliable */
 			tlspool_close_poolhandle (pool->handle);
-			pool->handle = INVALID_POOL_HANDLE;
+			pool->handle = -1;
 			errno = EPROTO;
 			return false;
 		}
@@ -314,7 +316,7 @@ bool tlspool_async_close (struct tlspool_async_pool *pool,
 				bool close_socket) {
 	//
 	// Should we try to close the underlying socket
-	if (close_socket && (pool->handle != INVALID_POOL_HANDLE)) {
+	if (close_socket && (pool->handle != -1)) {
 		tlspool_close_poolhandle (pool->handle);
 	}
 	//
@@ -348,5 +350,5 @@ bool tlspool_async_close (struct tlspool_async_pool *pool,
 }
 
 
-//TODO// How to register with an event loop?  The pool_handle_t is strange on Windows...
+//TODO// How to register with an event loop?  The int is strange on Windows...
 

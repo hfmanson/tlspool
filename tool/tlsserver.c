@@ -247,7 +247,7 @@ reconnect:
 			exit (1);
 		}
 		printf ("DEBUG: STARTTLS succeeded on testsrv\n");
-#ifdef EXTRA_TESTS
+#ifndef EXTRA_TESTS
 		if (tlspool_prng ("EXPERIMENTAL-tlspool-test", 0, NULL, 16, rndbuf, tlsdata_now.ctlkey) == -1) {
 			printf ("ERROR %d: Could not extract data with PRNG function\n", errno);
 		} else {
