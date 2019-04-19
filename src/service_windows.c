@@ -37,7 +37,17 @@ HANDLE hEvents[INSTANCES];
 extern char szPipename[1024];
 
 static int convert_socket_to_posix(SOCKET s) {
-	return s <= INT_MAX ? (int) s : -1;
+	int rc;
+	
+	if (s == INVALID_SOCKET) {
+		rc = -1;
+	} else if (s <= INT_MAX) {
+		rc = (int) s;
+	} else {
+		closesocket(s);			
+		rc = -1;
+	}
+	return rc;
 }
 
 static int socket_from_protocol_info (LPWSAPROTOCOL_INFOW lpProtocolInfo)

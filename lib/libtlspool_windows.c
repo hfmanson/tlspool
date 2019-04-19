@@ -11,6 +11,7 @@
 #ifndef WINDOWS_PORT
 #include <unistd.h>
 #else
+#include <stdbool.h>
 #include <limits.h>
 #endif
 #include <pthread.h>
@@ -49,8 +50,20 @@ int ipproto_to_sockettype(uint8_t ipproto) {
 	return ipproto == IPPROTO_TCP ? SOCK_STREAM : ipproto == IPPROTO_UDP ? SOCK_DGRAM : -1;
 }
 
-int convert_socket_to_posix(SOCKET s) {
-	return s <= INT_MAX ? (int) s : -1;
+int convert_socket_to_posix(SOCKET s, bool autoclose) {
+	int rc;
+	
+	if (s == INVALID_SOCKET) {
+		rc = -1;
+	} else if (s <= INT_MAX) {
+		rc = (int) s;
+	} else {
+		if (autoclose) {
+			closesocket(s);			
+		}
+		rc = -1;
+	}
+	return rc;
 }
 /*
  * The namedconnect() function is called by tlspool_starttls() when the
@@ -91,8 +104,8 @@ int tlspool_namedconnect_default (starttls_t *tlsdata, void *privdata) {
 	{
 		// printf("DEBUG: socketpair succeeded\n");
 		/* Socketpair created */
-		plainfd = convert_socket_to_posix(soxx[0]);
-		* (int *) privdata = convert_socket_to_posix(soxx[1]);
+		plainfd = convert_socket_to_posix(soxx[0], true);
+		* (int *) privdata = convert_socket_to_posix(soxx[1], true);
 	} else {
 		/* Socketpair failed */
 		// printf("DEBUG: socketpair failed\n");
