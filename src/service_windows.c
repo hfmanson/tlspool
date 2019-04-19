@@ -36,9 +36,13 @@ PIPEINST Pipe[INSTANCES];
 HANDLE hEvents[INSTANCES];
 extern char szPipename[1024];
 
+static int convert_socket_to_posix(SOCKET s) {
+	return s <= INT_MAX ? (int) s : -1;
+}
+
 static int socket_from_protocol_info (LPWSAPROTOCOL_INFOW lpProtocolInfo)
 {
-	return WSASocketW (FROM_PROTOCOL_INFO, FROM_PROTOCOL_INFO, FROM_PROTOCOL_INFO, lpProtocolInfo, 0, 0);
+	return convert_socket_to_posix(WSASocketW(FROM_PROTOCOL_INFO, FROM_PROTOCOL_INFO, FROM_PROTOCOL_INFO, lpProtocolInfo, 0, 0));
 }
 
 // ConnectToNewClient(HANDLE, LPOVERLAPPED)
