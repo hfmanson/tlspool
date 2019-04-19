@@ -154,11 +154,10 @@ following data structure:
 
 ```
 struct tlspool_async_pool {
-	tlspool_handle_t handle;
+	int handle;
 	size_t cmdsize;
 	struct tlspool_async_request *requests;
-	char YYYYMMDD_producer [8+128];
-	uint32_t facilities;
+	struct pioc_ping pingdata;
 };
 ```
 
