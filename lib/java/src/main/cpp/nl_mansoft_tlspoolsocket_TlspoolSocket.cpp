@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #ifdef _WIN32
+#include <winsock2.h>
 #include <io.h>
 #else
 #include <unistd.h>
@@ -145,7 +146,7 @@ JNIEXPORT jint JNICALL Java_nl_mansoft_tlspoolsocket_TlspoolSocket_readEncrypted
 	// Get the int given the Field ID
 	int cryptfd = env->GetIntField(thisObj, fidCryptfd);
 //fprintf(stderr, "readEncrypted: cryptfd = %d\n", cryptfd);
-	int bytesread = read(cryptfd, inCArray + off, len);
+	int bytesread = recv(cryptfd, (char*) inCArray + off, len, 0);
 //fprintf(stderr, "readEncrypted: bytesread = %d\n", bytesread);
 	env->ReleaseByteArrayElements(inJNIArray, inCArray, 0); // release resources
 	return bytesread;
@@ -170,7 +171,7 @@ JNIEXPORT jint JNICALL Java_nl_mansoft_tlspoolsocket_TlspoolSocket_writeEncrypte
 	// Get the int given the Field ID
 	int cryptfd = env->GetIntField(thisObj, fidCryptfd);
 //fprintf(stderr, "writeEncrypted: cryptfd = %d\n", cryptfd);
-	int byteswritten = write(cryptfd, inCArray + off, len);
+	int byteswritten = send(cryptfd, (char*) inCArray + off, len, 0);
 	env->ReleaseByteArrayElements(inJNIArray, inCArray, 0); // release resources
 //fprintf(stderr, "writeEncrypted: byteswritten = %d\n", byteswritten);
 	return byteswritten;
