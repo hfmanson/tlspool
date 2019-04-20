@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.1 FATAL_ERROR)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_SOURCE_DIR}/cmake)
 
-project(tlspool C)
+project(tlspool C CXX)
 
 include (FeatureSummary)
 find_package (ARPA2CM 0.5 QUIET NO_MODULE)
@@ -24,6 +24,8 @@ include(MacroGitVersionInfo)
 include(CTest)
 include(FeatureSummary)
 include(GNUInstallDirs)
+include(FindJava)
+include(UseJava)
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -48,7 +50,7 @@ find_package(P11-Kit REQUIRED)     # ARPA
 find_package(Quick-DER 1.2.4 REQUIRED NO_MODULE)  # Config
 find_package(Unbound REQUIRED)     # ARPA
 find_package(com_err REQUIRED)     # Local
-
+find_package(JNI)                  # Java bindings
 # TODO: look for TLS-KDH
 
 if(GnuTLSDane_FOUND)
@@ -103,6 +105,9 @@ enable_testing()
 
 add_subdirectory(src)
 add_subdirectory(lib)
+if (JNI_FOUND)
+	add_subdirectory(lib/java)
+endif()
 add_subdirectory(tool)
 add_subdirectory(pulleyback)
 add_subdirectory(doc)
