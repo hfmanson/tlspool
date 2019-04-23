@@ -5,6 +5,8 @@
 #include <io.h>
 #else
 #include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
 #endif
 #include "nl_mansoft_tlspoolsocket_TlspoolSocket_PlainOutputStream.h"   // Generated
 
