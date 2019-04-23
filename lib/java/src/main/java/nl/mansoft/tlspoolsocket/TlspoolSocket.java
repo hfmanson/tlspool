@@ -24,7 +24,7 @@ public class TlspoolSocket extends SSLSocket {
     public static final int PIOF_STARTTLS_BOTHROLES_PEER = 0x0f;
 
     static {
-        System.loadLibrary("libtlspooljni");
+        System.loadLibrary("tlspooljni");
     }
 
     @Override
@@ -183,15 +183,16 @@ public class TlspoolSocket extends SSLSocket {
 
     @Override
     public void close() throws IOException {
+		System.err.println("TlspoolSocket.close()");
         try {
-            stopTls0();
-            writeEncryptedThread.join();
-            System.err.println("W joined");
-            if (autoClose) {
-                socket.close();
-                readEncryptedThread.join();
-                System.err.println("R joined");
-            }
+		stopTls0();
+		readEncryptedThread.join();
+		System.err.println("R joined");
+		writeEncryptedThread.join();
+		System.err.println("W joined");
+		if (autoClose) {
+			socket.close();
+		}
         } catch (InterruptedException ex) {
         }
     }
