@@ -1,6 +1,7 @@
 #include <jni.h>        // JNI header provided by JDK
 #include <stdio.h>      // C Standard IO Header
 #ifdef _WIN32
+#include <winsock2.h>
 #include <io.h>
 #else
 #include <unistd.h>
@@ -30,7 +31,7 @@ JNIEXPORT jint JNICALL Java_nl_mansoft_tlspoolsocket_TlspoolSocket_00024PlainInp
 	jbyte *inCArray = env->GetByteArrayElements(inJNIArray, NULL);
 	if (NULL == inCArray) return 0;
 	jsize length = env->GetArrayLength(inJNIArray);
-	int bytesread = read(fd, inCArray + off, len);
+	int bytesread = recv(fd, (char*) inCArray + off, len, 0);
 	env->ReleaseByteArrayElements(inJNIArray, inCArray, 0); // release resources
 	return bytesread;
 }
