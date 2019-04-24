@@ -39,6 +39,9 @@
 
 #include <libtasn1.h>
 
+#if !defined(WINDOWS_PORT)
+#define closesocket(s) close(s)
+#endif
 
 #ifdef HAVE_TLS_KDH
 #include <krb5.h>
@@ -1089,7 +1092,7 @@ static int copycat (int local, int remote, gnutls_session_t wrapped, int client)
 			// Read remote and decrypt to local
 			gnutls_packet_t packet;
 			sz = 0;
-			if ((inout [1].revents & POLLIN) || !remote_shutdown_done) {
+			if ((inout [1].revents & POLLIN)) {
 				sz = gnutls_record_recv_packet (wrapped, &packet);
 			}
 			tlog (TLOG_COPYCAT, LOG_DEBUG, "Copycat received %d remote bytes from %d (or error if <0)", (int) sz, remote);
@@ -4547,7 +4550,7 @@ DPRINTF ("DEBUG: Got a request to renegotiate existing TLS connection\n");
 			tlog (TLOG_UNIXSOCK, LOG_ERR, "Renegotiation started with extraneous file descriptor");
 			send_error (replycmd, E_TLSPOOL_SUPERFLUOUS_SOCKET,
 				"TLS Pool received a superfluous socket");
-			close (cryptfd);
+			closesocket (cryptfd);
 			assert (pthread_detach (pthread_self ()) == 0);
 			return NULL;
 		}
@@ -4627,11 +4630,11 @@ DPRINTF ("DEBUG: Client-side invocation flagged as wrong; compensated error\n");
 		send_error (replycmd, E_TLSPOOL_RENOGIATE_WOULD_BE_INSECURE,
 			"TLS Pool cannot ask peer for secure renegotiation");
 		if (cryptfd >= 0) {
-			close (cryptfd);
+			closesocket (cryptfd);
 			cryptfd = -1;
 		}
 		if (plainfd >= 0) {
-			close (plainfd);
+			closesocket (plainfd);
 			plainfd = -1;
 		}
 		if (ckn != NULL) {
@@ -4667,11 +4670,11 @@ DPRINTF ("DEBUG: Client-side invocation flagged as wrong; compensated error\n");
 		send_error (replycmd, E_TLSPOOL_CONNECTION_HANDLER_SETUP,
 				"TLS Pool failed to setup the connection handler");
 		if (cryptfd >= 0) {
-			close (cryptfd);
+			closesocket (cryptfd);
 			cryptfd = -1;
 		}
 		if (plainfd >= 0) {
-			close (plainfd);
+			closesocket (plainfd);
 			plainfd = -1;
 		}
 		if (ckn != NULL) {
@@ -4691,7 +4694,7 @@ DPRINTF ("DEBUG: Client-side invocation flagged as wrong; compensated error\n");
 		send_error (replycmd, E_TLSPOOL_CIPHER_SOCKET_NEEDED,
 				"TLS Pool needs a ciphertext socket but got none");
 		if (plainfd >= 0) {
-			close (plainfd);
+			closesocket (plainfd);
 			plainfd = -1;
 		}
 DPRINTF ("ctlkey_unregister under ckn=%p at %d\n", (void *)ckn, __LINE__);
@@ -4761,9 +4764,9 @@ DPRINTF ("DEBUG: anonpre_determination, comparing [%d] %s to %s, found cmp==%d\n
 		//
 		send_error (replycmd, E_TLSPOOL_COMMAND_NOTIMPL,
 				"TLS Pool command or variety not implemented");
-		close (cryptfd);
+		closesocket (cryptfd);
 		if (plainfd >= 0) {
-			close (plainfd);
+			closesocket (plainfd);
 			plainfd = -1;
 		}
 DPRINTF ("ctlkey_unregister under ckn=%p at %d\n", (void *)ckn, __LINE__);
@@ -4950,9 +4953,9 @@ DPRINTF ("gnutls_deinit (%p) at %d\n", (void *)session, __LINE__);
 			gnutls_deinit (session);
 			got_session = 0;
 		}
-		close (cryptfd);
+		closesocket (cryptfd);
 		if (plainfd >= 0) {
-			close (plainfd);
+			closesocket (plainfd);
 			plainfd = -1;
 		}
 DPRINTF ("ctlkey_unregister under ckn=%p at %d\n", (void *)ckn, __LINE__);
@@ -5273,9 +5276,9 @@ DPRINTF ("gnutls_deinit (%p) at %d\n", (void *)session, __LINE__);
 			gnutls_deinit (session);
 			got_session = 0;
 		}
-		close (cryptfd);
+		closesocket (cryptfd);
 		if (plainfd >= 0) {
-			close (plainfd);
+			closesocket (plainfd);
 			plainfd = -1;
 		}
 DPRINTF ("ctlkey_unregister under ckn=%p at %d\n", (void *)ckn, __LINE__);
@@ -5298,7 +5301,7 @@ DPRINTF ("ctlkey_unregister under ckn=%p at %d\n", (void *)ckn, __LINE__);
 	if (cmd->passfd >= 0) {
 		if (plainfd >= 0) {
 			tlog (TLOG_UNIXSOCK | TLOG_USER, LOG_ERR, "Doubly supplied plainfd, closing the second one supplied %d\n", cmd->passfd);
-			close (cmd->passfd);
+			closesocket (cmd->passfd);
 		} else {
 			plainfd = cmd->passfd;
 		}
@@ -5326,7 +5329,7 @@ DPRINTF ("gnutls_deinit (%p) at %d\n", (void *)session, __LINE__);
 				gnutls_deinit (session);
 				got_session = 0;
 			}
-			close (cryptfd);
+			closesocket (cryptfd);
 DPRINTF ("ctlkey_unregister under ckn=%p at %d\n", (void *)ckn, __LINE__);
 			if (ckn) {	/* TODO: CHECK NEEDED? PRACTICE=>YES */
 				if (ctlkey_unregister (ckn->regent.ctlkey)) {
@@ -5354,7 +5357,7 @@ DPRINTF ("gnutls_deinit (%p) at %d\n", (void *)session, __LINE__);
 			gnutls_deinit (session);
 			got_session = 0;
 		}
-		close (cryptfd);
+		closesocket (cryptfd);
 DPRINTF ("ctlkey_unregister under ckn=%p at %d\n", (void *)ckn, __LINE__);
 		if (ckn != NULL) {	/* TODO: CHECK NEEDED? */
 			if (ctlkey_unregister (ckn->regent.ctlkey)) {
@@ -5461,8 +5464,8 @@ DPRINTF ("ctlkey_unregister under ckn=%p at %d\n", (void *)ckn, __LINE__);
 		free (preauth);
 		preauth = NULL;
 	}
-	close (plainfd);
-	close (cryptfd);
+	closesocket (plainfd);
+	closesocket (cryptfd);
 	cleanup_any_remote_credentials (cmd);
 	if (got_session) {
 DPRINTF ("gnutls_deinit (%p) at %d\n", (void *)session, __LINE__);

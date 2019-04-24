@@ -52,7 +52,7 @@ static int convert_socket_to_posix(SOCKET s) {
 
 static int socket_from_protocol_info (LPWSAPROTOCOL_INFOW lpProtocolInfo)
 {
-	return convert_socket_to_posix(WSASocketW(FROM_PROTOCOL_INFO, FROM_PROTOCOL_INFO, FROM_PROTOCOL_INFO, lpProtocolInfo, 0, 0));
+	return convert_socket_to_posix(WSASocketW(FROM_PROTOCOL_INFO, FROM_PROTOCOL_INFO, FROM_PROTOCOL_INFO, lpProtocolInfo, 0, WSA_FLAG_OVERLAPPED));
 }
 
 // ConnectToNewClient(HANDLE, LPOVERLAPPED)

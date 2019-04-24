@@ -200,6 +200,7 @@ int os_sendmsg_command(int poolfd, struct tlspool_command *cmd, int fd) {
 				// errno inherited from socket_dup_protocol_info()
 				return -1;
 			}
+			closesocket(fd);			
 			//... (..., &cmd.pio_ancil_data.pioa_socket, ...);
 		} else {
 			// Send a file handle
