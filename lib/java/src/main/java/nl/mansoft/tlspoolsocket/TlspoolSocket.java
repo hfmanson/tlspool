@@ -24,7 +24,7 @@ public class TlspoolSocket extends SSLSocket {
     public static final int PIOF_STARTTLS_BOTHROLES_PEER = 0x0f;
 
     static {
-        System.loadLibrary("tlspooljni");
+        System.loadLibrary("libtlspooljni");
     }
 
     @Override
@@ -154,6 +154,7 @@ public class TlspoolSocket extends SSLSocket {
     private native int stopTls0();
     private native int readEncrypted(byte[] b, int off, int len) throws IOException;
     private native int writeEncrypted(byte[] b, int off, int len) throws IOException;
+    private native int shutdownWriteEncrypted() throws IOException;
 
     private Socket socket;
     private PlainOutputStream pos;
@@ -183,18 +184,19 @@ public class TlspoolSocket extends SSLSocket {
 
     @Override
     public void close() throws IOException {
+		
 		System.err.println("TlspoolSocket.close()");
-        try {
-		stopTls0();
-		readEncryptedThread.join();
-		System.err.println("R joined");
-		writeEncryptedThread.join();
-		System.err.println("W joined");
-		if (autoClose) {
-			socket.close();
-		}
-        } catch (InterruptedException ex) {
-        }
+		try {
+			stopTls0();
+			readEncryptedThread.join();
+			System.err.println("R joined");
+			writeEncryptedThread.join();
+			System.err.println("W joined");
+			if (autoClose) {
+				socket.close();
+			}
+		} catch (InterruptedException ex) {
+		}		
     }
 
     public void startTls(int flags, int local, int ipproto, int streamid, String localid, String remoteid, String service, int timeout) {
@@ -212,6 +214,7 @@ public class TlspoolSocket extends SSLSocket {
                             int bytesRead = socket.getInputStream().read(buf);
                             System.err.println("readEncryptedThread: bytes read from socket: " + bytesRead);
                             if (bytesRead == -1) {
+                                shutdownWriteEncrypted();
                                 System.err.println("EXIT: readEncryptedThread");
                                 return;
                             }

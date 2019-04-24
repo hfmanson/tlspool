@@ -63,7 +63,7 @@ public class TestSSL {
             printResponseHeaders(urlConnection.getHeaderFields());
             direct(urlConnection.getInputStream());
             urlConnection.disconnect();
-        } catch (IOException ex) {
+        } catch (Exception ex) {
             Logger.getLogger(TestSSL.class.getName()).log(Level.SEVERE, null, ex);
         }
     }

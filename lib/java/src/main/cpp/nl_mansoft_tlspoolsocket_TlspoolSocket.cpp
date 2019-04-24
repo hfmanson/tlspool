@@ -195,11 +195,37 @@ JNIEXPORT jint JNICALL Java_nl_mansoft_tlspoolsocket_TlspoolSocket_stopTls0
 //fprintf(stderr, "stopTls0: plainfd = %d\n", plainfd);
 	
 #ifdef _WIN32
-	shutdown(plainfd, SD_BOTH);
+	closesocket(plainfd);
 #else	
-	shutdown(plainfd, SHUT_RDWR);
+	close(plainfd);
 #endif	
 	return 0;
+}
+
+/*
+ * Class:     nl_mansoft_tlspoolsocket_TlspoolSocket
+ * Method:    shutdownWriteEncrypted
+ * Signature: ()I
+ */
+JNIEXPORT jint JNICALL Java_nl_mansoft_tlspoolsocket_TlspoolSocket_shutdownWriteEncrypted
+  (JNIEnv *env, jobject thisObj)
+{
+	int rc;
+	
+	// Get a reference to this object's class
+	jclass thisClass = env->GetObjectClass(thisObj);
+
+	// Get the Field ID of the instance variable "cryptfd"
+	jfieldID fidCryptfd = env->GetFieldID(thisClass, "cryptfd", "I");
+	if (NULL == fidCryptfd) return -1;
+	// Get the int given the Field ID
+	int cryptfd = env->GetIntField(thisObj, fidCryptfd);
+#ifdef _WIN32
+	rc = shutdown(cryptfd, SD_SEND);
+#else
+	rc = shutdown(cryptfd, SHUT_WR);
+#endif
+	return rc;
 }
 
 #ifdef __cplusplus
