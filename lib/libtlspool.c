@@ -341,11 +341,11 @@ static void *master_thread (void *path) {
 			if ((retval == -1) && (errno = EINTR)) {
 				continue;	// Badly masked user signal
 			}
+#endif /* !WINDOWS_PORT */
 			if (retval == 0) {
 				errno = EPIPE;
 				retval = -1;
 			}
-#endif /* !WINDOWS_PORT */
 			if (retval == -1) {
 				// This includes EPIPE, or EOF, for detached
 				// TLS Pool; the treatment is to reconnect.
