@@ -4,13 +4,21 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
+import java.security.Principal;
+import java.security.cert.Certificate;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import javax.net.ssl.HandshakeCompletedEvent;
 import javax.net.ssl.HandshakeCompletedListener;
+import javax.net.ssl.SSLPeerUnverifiedException;
 import javax.net.ssl.SSLSession;
+import javax.net.ssl.SSLSessionContext;
 import javax.net.ssl.SSLSocket;
+import javax.security.cert.X509Certificate;
 
-public class TlspoolSocket extends SSLSocket {
+public class TlspoolSocket extends SSLSocket implements SSLSession {
     public static final int IPPROTO_TCP = 6;
     public static final int IPPROTO_UDP = 17;
     public static final int IPPROTO_SCTP = 132;
@@ -57,19 +65,40 @@ public class TlspoolSocket extends SSLSocket {
 
     @Override
     public SSLSession getSession() {
-        return null;
+        return this;
     }
 
     @Override
-    public void addHandshakeCompletedListener(HandshakeCompletedListener hl) {
+    public void addHandshakeCompletedListener(HandshakeCompletedListener handshakeCompletedListener) {
+        if (handshakeCompletedListener == null) {
+            throw new IllegalArgumentException("handshakeCompletedListener is null");
+        }
+        listeners.add(handshakeCompletedListener);
     }
 
     @Override
-    public void removeHandshakeCompletedListener(HandshakeCompletedListener hl) {
+    public void removeHandshakeCompletedListener(HandshakeCompletedListener handshakeCompletedListener) {
+        if (handshakeCompletedListener == null || !listeners.remove(handshakeCompletedListener)) {
+            throw new IllegalArgumentException("handshakeCompletedListener is null");
+        }
     }
 
     @Override
     public void startHandshake() throws IOException {
+        startTls(
+            TlspoolSocket.PIOF_STARTTLS_LOCALROLE_CLIENT | TlspoolSocket.PIOF_STARTTLS_REMOTEROLE_SERVER,
+            0,
+            TlspoolSocket.IPPROTO_TCP,
+            0,
+            "testcli@tlspool.arpa2.lab",
+            host,
+            "generic",
+            0
+        );
+        HandshakeCompletedEvent handshakeCompletedEvent = new HandshakeCompletedEvent(this, this);
+        for (HandshakeCompletedListener handshakeCompletedListener : listeners) {
+            handshakeCompletedListener.handshakeCompleted(handshakeCompletedEvent);
+        }
     }
 
     @Override
@@ -107,6 +136,111 @@ public class TlspoolSocket extends SSLSocket {
 
     @Override
     public boolean getEnableSessionCreation() {
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    @Override
+    public byte[] getId() {
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    @Override
+    public SSLSessionContext getSessionContext() {
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    @Override
+    public long getCreationTime() {
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    @Override
+    public long getLastAccessedTime() {
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    @Override
+    public void invalidate() {
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    @Override
+    public boolean isValid() {
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    @Override
+    public void putValue(String string, Object o) {
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    @Override
+    public Object getValue(String string) {
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    @Override
+    public void removeValue(String string) {
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    @Override
+    public String[] getValueNames() {
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    @Override
+    public Certificate[] getPeerCertificates() throws SSLPeerUnverifiedException {
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    @Override
+    public Certificate[] getLocalCertificates() {
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    @Override
+    public X509Certificate[] getPeerCertificateChain() throws SSLPeerUnverifiedException {
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    @Override
+    public Principal getPeerPrincipal() throws SSLPeerUnverifiedException {
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    @Override
+    public Principal getLocalPrincipal() {
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    @Override
+    public String getCipherSuite() {
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    @Override
+    public String getProtocol() {
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    @Override
+    public String getPeerHost() {
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    @Override
+    public int getPeerPort() {
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    @Override
+    public int getPacketBufferSize() {
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    @Override
+    public int getApplicationBufferSize() {
         throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
     }
 
@@ -157,19 +291,25 @@ public class TlspoolSocket extends SSLSocket {
     private native int shutdownWriteEncrypted() throws IOException;
 
     private Socket socket;
+    private String host;
+    private int port;
+    private boolean autoClose;
     private PlainOutputStream pos;
     private PlainInputStream pis;
     private int plainfd;
     private int cryptfd;
     private Thread readEncryptedThread;
     private Thread writeEncryptedThread;
-    private boolean autoClose;
-
-    public TlspoolSocket(Socket socket, boolean autoClose) {
+    private byte[] controlKey;
+    private Set<HandshakeCompletedListener> listeners;
+    public TlspoolSocket(Socket socket, String host, int port, boolean autoClose) {
         plainfd = -1;
         cryptfd = -1;
         this.socket = socket;
+        this.host = host;
+        this.port = port;
         this.autoClose = autoClose;
+        listeners = new HashSet<HandshakeCompletedListener>();
     }
 
     @Override
@@ -184,7 +324,7 @@ public class TlspoolSocket extends SSLSocket {
 
     @Override
     public void close() throws IOException {
-		
+
 		System.err.println("TlspoolSocket.close()");
 		try {
 			stopTls0();
@@ -196,7 +336,7 @@ public class TlspoolSocket extends SSLSocket {
 				socket.close();
 			}
 		} catch (InterruptedException ex) {
-		}		
+		}
     }
 
     public void startTls(int flags, int local, int ipproto, int streamid, String localid, String remoteid, String service, int timeout) {
@@ -261,5 +401,10 @@ public class TlspoolSocket extends SSLSocket {
         System.err.println("cryptfd: " + cryptfd);
         pos = new PlainOutputStream(plainfd);
         pis = new PlainInputStream(plainfd);
+        if (controlKey != null) {
+            System.err.println("control key length: " + controlKey.length);
+        } else {
+            System.err.println("control key is null");
+        }
     }
 }
