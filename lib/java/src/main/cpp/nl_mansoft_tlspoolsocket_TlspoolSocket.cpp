@@ -1,7 +1,10 @@
 #include <jni.h>
 #include <stdio.h>
 #include <string.h>
-#ifdef _WIN32
+
+#include <tlspool/starttls.h>
+
+#ifdef WINDOWS_PORT
 #include <winsock2.h>
 #include <io.h>
 #else
@@ -11,18 +14,8 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #endif
+
 #include "nl_mansoft_tlspoolsocket_TlspoolSocket.h"   // Generated
-#ifdef TEST
-#ifdef _WIN32
-#define FILENAME_CRYPT "c:\\tmp\\crypt.txt"
-#define FILENAME_PLAIN "c:\\tmp\\plain.txt"
-#else /* _WIN32 */
-#define FILENAME_CRYPT "/tmp/crypt.txt"
-#define FILENAME_PLAIN "/tmp/plain.txt"
-#endif /* _WIN32 */
-#else /* TEST */
-#include <tlspool/starttls.h>
-#endif /* TEST */
 
 #ifdef __cplusplus
 extern "C" {
@@ -45,20 +38,6 @@ JNIEXPORT jint JNICALL Java_nl_mansoft_tlspoolsocket_TlspoolSocket_startTls0
 	int rc = 0;
 	// Get a reference to this object's class
 	jclass thisClass = env->GetObjectClass(thisObj);
-#ifdef TEST
-	int cryptfd = open(FILENAME_CRYPT, O_CREAT | O_RDWR, S_IREAD | S_IWRITE);
-	// Get the Field ID of the instance variable "cryptfd"
-	jfieldID fidCryptfd = env->GetFieldID(thisClass, "cryptfd", "I");
-	if (NULL == fidCryptfd) return -1;
-	// Get the int given the Field ID
-	env->SetIntField(thisObj, fidCryptfd, cryptfd);
-
-	int plainfd = open(FILENAME_PLAIN, O_CREAT | O_RDWR, S_IREAD | S_IWRITE);
-	jfieldID fidPlainfd = env->GetFieldID(thisClass, "plainfd", "I");
-	if (NULL == fidPlainfd) return -1;
-	// Get the int given the Field ID
-	env->SetIntField(thisObj, fidPlainfd, plainfd);
-#else /* TEST */
 	int plainfd = -1;
 	int type = ipproto_to_sockettype (ipproto);
 	int soxx [2];
@@ -94,7 +73,7 @@ JNIEXPORT jint JNICALL Java_nl_mansoft_tlspoolsocket_TlspoolSocket_startTls0
 		strcpy(tlsdata.remoteid, remoteidCStr);
 		strcpy((char *) tlsdata.service, serviceCStr);
 		tlsdata.timeout = timeout;
-fprintf(stderr, "tlspool_starttls: flags = %d, localid = %d, ipproto = %d, streamid = %d, localid = %s, remoteid = %s, service = %s, timeout = %d\n",
+fprintf(stderr, "tlspool_starttls: flags = %d, local = %d, ipproto = %d, streamid = %d, localid = %s, remoteid = %s, service = %s, timeout = %d\n",
 			tlsdata.flags,
 			tlsdata.local,
 			tlsdata.ipproto,
@@ -105,16 +84,24 @@ fprintf(stderr, "tlspool_starttls: flags = %d, localid = %d, ipproto = %d, strea
 			timeout
 		);
 		rc = tlspool_starttls (soxx[1], &tlsdata, &plainfd, NULL);
-fprintf(stderr, "tlspool_starttls: rc = %d\n", rc);
-			env->ReleaseStringUTFChars(localid, localidCStr);
-			env->ReleaseStringUTFChars(remoteid, remoteidCStr);
-			env->ReleaseStringUTFChars(service, serviceCStr);
+fprintf(stderr, "tlspool_starttls: rc = %d, localid = %s, remoteid = %s\n", rc, tlsdata.localid, tlsdata.remoteid);
+		env->ReleaseStringUTFChars(localid, localidCStr);
+		env->ReleaseStringUTFChars(remoteid, remoteidCStr);
+		env->ReleaseStringUTFChars(service, serviceCStr);
 		if (rc == 0) {
 			jfieldID fidPlainfd = env->GetFieldID(thisClass, "plainfd", "I");
 			if (NULL == fidPlainfd) return -1;
 //fprintf(stderr, "fidPlainfd = %d\n", fidPlainfd);
 			// Get the int given the Field ID
-			env->SetIntField(thisObj, fidPlainfd, plainfd);				
+			env->SetIntField(thisObj, fidPlainfd, plainfd);
+			// copy control key to controlKey byte[] field
+			jfieldID fidControlKey = env->GetFieldID(thisClass, "controlKey", "[B");
+			if (NULL == fidControlKey) return -1;
+			jbyteArray barr = env->NewByteArray(TLSPOOL_CTLKEYLEN);
+			jbyte *bytes = env->GetByteArrayElements(barr, NULL);
+			memcpy(bytes, tlsdata.ctlkey, TLSPOOL_CTLKEYLEN);
+			env->ReleaseByteArrayElements(barr, bytes, 0);
+			env->SetObjectField(thisObj, fidControlKey, barr);
 		} else {
 			perror ("Failed to STARTTLS on testcli");
 			if (plainfd >= 0) {
@@ -122,7 +109,6 @@ fprintf(stderr, "tlspool_starttls: rc = %d\n", rc);
 			}
 		}
 	}
-#endif /* TEST */
 	return rc;
 }
 
@@ -151,6 +137,7 @@ JNIEXPORT jint JNICALL Java_nl_mansoft_tlspoolsocket_TlspoolSocket_readEncrypted
 	env->ReleaseByteArrayElements(inJNIArray, inCArray, 0); // release resources
 	return bytesread;
 }
+
 /*
  * Class:     TlspoolSocket
  * Method:    writeEncrypted
@@ -175,7 +162,8 @@ JNIEXPORT jint JNICALL Java_nl_mansoft_tlspoolsocket_TlspoolSocket_writeEncrypte
 	env->ReleaseByteArrayElements(inJNIArray, inCArray, 0); // release resources
 //fprintf(stderr, "writeEncrypted: byteswritten = %d\n", byteswritten);
 	return byteswritten;
-}
+	}
+
 /*
  * Class:     nl_mansoft_tlspoolsocket_TlspoolSocket
  * Method:    stopTls0
@@ -184,6 +172,8 @@ JNIEXPORT jint JNICALL Java_nl_mansoft_tlspoolsocket_TlspoolSocket_writeEncrypte
 JNIEXPORT jint JNICALL Java_nl_mansoft_tlspoolsocket_TlspoolSocket_stopTls0
 (JNIEnv *env, jobject thisObj)
 {
+	int rc;
+	
 	// Get a reference to this object's class
 	jclass thisClass = env->GetObjectClass(thisObj);
 
@@ -194,12 +184,12 @@ JNIEXPORT jint JNICALL Java_nl_mansoft_tlspoolsocket_TlspoolSocket_stopTls0
 	int plainfd = env->GetIntField(thisObj, fidPlainfd);
 //fprintf(stderr, "stopTls0: plainfd = %d\n", plainfd);
 	
-#ifdef _WIN32
-	closesocket(plainfd);
-#else	
-	close(plainfd);
-#endif	
-	return 0;
+#ifdef WINDOWS_PORT
+	rc = shutdown(plainfd, SD_SEND);
+#else
+	rc = shutdown(plainfd, SHUT_WR);
+#endif
+	return rc;
 }
 
 /*
@@ -220,7 +210,7 @@ JNIEXPORT jint JNICALL Java_nl_mansoft_tlspoolsocket_TlspoolSocket_shutdownWrite
 	if (NULL == fidCryptfd) return -1;
 	// Get the int given the Field ID
 	int cryptfd = env->GetIntField(thisObj, fidCryptfd);
-#ifdef _WIN32
+#ifdef WINDOWS_PORT
 	rc = shutdown(cryptfd, SD_SEND);
 #else
 	rc = shutdown(cryptfd, SHUT_WR);
