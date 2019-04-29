@@ -169,6 +169,16 @@ reconnect:
 	printf ("--\n");
 	fflush (stdout);
 	plainfd = -1;
+fprintf(stderr, "tlspool_starttls: flags = %d, local = %d, ipproto = %d, streamid = %d, localid = %s, remoteid = %s, service = %s, timeout = %d\n",
+			tlsdata_cli.flags,
+			tlsdata_cli.local,
+			tlsdata_cli.ipproto,
+			tlsdata_cli.streamid,
+			tlsdata_cli.localid,
+			tlsdata_cli.remoteid,
+			(char *) tlsdata_cli.service,
+			tlsdata_cli.timeout
+		);
 	if (-1 == tlspool_starttls (sox, &tlsdata_cli, &plainfd, NULL)) {
 		perror ("Failed to STARTTLS on testcli");
 		if (plainfd >= 0) {
@@ -176,6 +186,7 @@ reconnect:
 		}
 		exit (1);
 	}
+	printf ("DEBUG: Local plainfd = %d, localid = %s, remoteid = %s\n", plainfd, tlsdata_cli.localid, tlsdata_cli.remoteid);
 #ifdef EXTRA_TESTS	
 	// Play around, just for fun, with the control key
 	if (tlspool_control_reattach (tlsdata_cli.ctlkey) != -1) {
@@ -279,7 +290,6 @@ reconnect:
 		printf ("SIGCONT will trigger renegotiation of the TLS handshake\n");
 	}
 #endif	
-	printf ("DEBUG: Local plainfd = %d\n", plainfd);
 	runterminal (plainfd, &sigcont, &tlsdata_cli,
 			PIOF_STARTTLS_LOCALROLE_CLIENT | PIOF_STARTTLS_REMOTEROLE_SERVER | PIOF_STARTTLS_RENEGOTIATE,
 			"testcli@tlspool.arpa2.lab",
