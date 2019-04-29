@@ -1026,7 +1026,7 @@ static int copycat (int local, int remote, gnutls_session_t wrapped, int client)
 	int retval = GNUTLS_E_SUCCESS;
 	bool local_shutdown_done = false;
 	bool remote_shutdown_done = false;
-	
+
 	client = -1;
 	inout [0].fd = local;
 	inout [1].fd = remote;
@@ -1064,7 +1064,11 @@ static int copycat (int local, int remote, gnutls_session_t wrapped, int client)
 			}
 			tlog (TLOG_COPYCAT, LOG_DEBUG, "Copycat received %d local bytes (or error<0) from %d", (int) sz, local);
 			if (sz == -1) {
+#ifdef WINDOWS_PORT
+				tlog (TLOG_COPYCAT, LOG_ERR, "WSA Error while receiving: %d",  WSAGetLastError());
+#else /* WINDOWS_PORT */
 				tlog (TLOG_COPYCAT, LOG_ERR, "Error while receiving: %s", strerror (errno));
+#endif /* WINDOWS_PORT */
 				break;	// stream error
 			} else if (sz == 0) {
 				inout [0].events &= ~POLLIN;
@@ -1072,11 +1076,7 @@ static int copycat (int local, int remote, gnutls_session_t wrapped, int client)
 					tlog (TLOG_COPYCAT, LOG_DEBUG, "already done local shutdown");
 				} else {
 					shutdown (local, SHUT_RD);
-#ifdef WINDOWS_PORT
-					setsockopt (remote, SOL_SOCKET, SO_LINGER, (const char *) &linger, sizeof (linger));
-#else /* WINDOWS_PORT */
-					setsockopt (remote, SOL_SOCKET, SO_LINGER, &linger, sizeof (linger));
-#endif /* WINDOWS_PORT */
+					setsockopt (remote, SOL_SOCKET, SO_LINGER, (void *) &linger, sizeof (linger));
 					tlog (TLOG_COPYCAT, LOG_DEBUG, "Sending gnutls_bye");
 					gnutls_bye (wrapped, GNUTLS_SHUT_WR);
 					local_shutdown_done = true;
