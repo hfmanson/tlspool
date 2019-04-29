@@ -218,6 +218,54 @@ JNIEXPORT jint JNICALL Java_nl_mansoft_tlspoolsocket_TlspoolSocket_shutdownWrite
 	return rc;
 }
 
+/*
+ * Class:     nl_mansoft_tlspoolsocket_TlspoolSocket
+ * Method:    getInfo
+ * Signature: (I)Ljavax/security/auth/x500/X500Principal;
+ *
+ *   public javax.security.auth.x500.X500Principal(byte[]);
+ *   descriptor: ([B)V
+ *   
+ */
+ 
+
+JNIEXPORT jobject JNICALL Java_nl_mansoft_tlspoolsocket_TlspoolSocket_getInfo
+  (JNIEnv *env, jobject thisObj, jint kind) {
+	jobject x500principal = NULL;
+
+	jclass clazz = env->FindClass("javax/security/auth/x500/X500Principal");
+	if (clazz != NULL) {
+		jmethodID methodid = env->GetMethodID(clazz, "<init>", "([B)V");
+		if (methodid != NULL) {
+			// Get a reference to this object's class
+			jclass thisClass = env->GetObjectClass(thisObj);
+			// Get the Field ID of the instance variable "controlKey"
+			jfieldID fidControlKey = env->GetFieldID(thisClass, "controlKey", "[B");
+			jbyteArray ctlkeybarr = (jbyteArray) env->GetObjectField(thisObj, fidControlKey);
+			if (ctlkeybarr != NULL) {
+				jsize size = env->GetArrayLength(ctlkeybarr);
+				if (size == TLSPOOL_CTLKEYLEN) {
+					uint16_t infolen = 0xffff;
+					uint8_t info [TLSPOOL_INFOBUFLEN];
+
+					jbyte *ctlkey = env->GetByteArrayElements(ctlkeybarr, NULL);
+					int rc = tlspool_info ((uint32_t) kind, info, &infolen, (uint8_t*) ctlkey);
+					if (rc == 0) {
+						jbyteArray infobarr = env->NewByteArray(infolen);
+						jbyte *bytes = env->GetByteArrayElements(infobarr, NULL);
+						memcpy(bytes, info, infolen);
+						env->ReleaseByteArrayElements(infobarr, bytes, 0);					
+						x500principal = env->NewObject(clazz, methodid, infobarr);					
+					}
+					env->ReleaseByteArrayElements(ctlkeybarr, ctlkey, 0);
+				}
+			}
+		}
+	}
+	return x500principal;
+}
+
+
 #ifdef __cplusplus
 }
 #endif

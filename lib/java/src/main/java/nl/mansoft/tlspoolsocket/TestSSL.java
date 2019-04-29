@@ -1,18 +1,17 @@
 package nl.mansoft.tlspoolsocket;
 
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.Socket;
+import java.security.Principal;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.TimeoutException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import javax.net.ssl.SSLSession;
 import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLSocketFactory;
 
@@ -72,16 +71,23 @@ public class TestSSL {
 
     public void testSSL() throws Exception {
         String host = "localhost";
-        String remoteid = "tlspool.arpa2.lab";
+        String remoteid = "testsrv@tlspool.arpa2.lab";
         int port = 12345;
         Socket socket = new Socket(host, port);
         SSLSocketFactory factory = new TlspoolSSLSocketFactory();
         sslSocket = (SSLSocket) factory.createSocket(socket, remoteid, port, true);
         sslSocket.startHandshake();
+        SSLSession session = sslSocket.getSession();
+        Principal localsubject = session.getLocalPrincipal();
+        System.err.println("local subject: " + localsubject);
+        Principal peersubject = session.getPeerPrincipal();
+        System.err.println("peer subject: " + peersubject);
+
         OutputStream os = sslSocket.getOutputStream();
         socketThread.start();
         String line;
         consoleInputReadTask = new ConsoleInputReadTask();
+        System.out.println("peer host: " + session.getPeerHost() + ", port: " + session.getPeerPort());
         //BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
         //while ((line = reader.readLine()) != null && line.charAt(0) != '.') {
         while ((line = readLine()) != null && !line.isEmpty()) {

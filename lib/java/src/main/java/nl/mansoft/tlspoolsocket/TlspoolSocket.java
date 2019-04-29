@@ -16,6 +16,7 @@ import javax.net.ssl.SSLPeerUnverifiedException;
 import javax.net.ssl.SSLSession;
 import javax.net.ssl.SSLSessionContext;
 import javax.net.ssl.SSLSocket;
+import javax.security.auth.x500.X500Principal;
 import javax.security.cert.X509Certificate;
 
 public class TlspoolSocket extends SSLSocket implements SSLSession {
@@ -23,13 +24,17 @@ public class TlspoolSocket extends SSLSocket implements SSLSession {
     public static final int IPPROTO_UDP = 17;
     public static final int IPPROTO_SCTP = 132;
 
-    public static final int PIOF_STARTTLS_LOCALROLE_CLIENT = 0x01;
-    public static final int PIOF_STARTTLS_LOCALROLE_SERVER = 0x02;
-    public static final int PIOF_STARTTLS_LOCALROLE_PEER = 0x03;
+    public static final int PIOF_STARTTLS_LOCALROLE_CLIENT  = 0x01;
+    public static final int PIOF_STARTTLS_LOCALROLE_SERVER  = 0x02;
+    public static final int PIOF_STARTTLS_LOCALROLE_PEER    = 0x03;
     public static final int PIOF_STARTTLS_REMOTEROLE_CLIENT = 0x04;
     public static final int PIOF_STARTTLS_REMOTEROLE_SERVER = 0x08;
-    public static final int PIOF_STARTTLS_REMOTEROLE_PEER = 0x0c;
-    public static final int PIOF_STARTTLS_BOTHROLES_PEER = 0x0f;
+    public static final int PIOF_STARTTLS_REMOTEROLE_PEER   = 0x0c;
+    public static final int PIOF_STARTTLS_BOTHROLES_PEER    = 0x0f;
+    public static final int PIOK_INFO_PEERCERT_SUBJECT		= 0x52800000;
+    public static final int PIOK_INFO_PEERCERT_ISSUER		= 0x52800001;
+    public static final int PIOK_INFO_MYCERT_SUBJECT		= 0x52800100;
+    public static final int PIOK_INFO_MYCERT_ISSUER			= 0x52800101;
 
     static {
         System.loadLibrary("libtlspooljni");
@@ -206,12 +211,12 @@ public class TlspoolSocket extends SSLSocket implements SSLSession {
 
     @Override
     public Principal getPeerPrincipal() throws SSLPeerUnverifiedException {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        return getInfo(PIOK_INFO_PEERCERT_SUBJECT);
     }
 
     @Override
     public Principal getLocalPrincipal() {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        return getInfo(PIOK_INFO_MYCERT_SUBJECT);
     }
 
     @Override
@@ -226,12 +231,12 @@ public class TlspoolSocket extends SSLSocket implements SSLSession {
 
     @Override
     public String getPeerHost() {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        return host;
     }
 
     @Override
     public int getPeerPort() {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        return port;
     }
 
     @Override
@@ -289,6 +294,7 @@ public class TlspoolSocket extends SSLSocket implements SSLSession {
     private native int readEncrypted(byte[] b, int off, int len) throws IOException;
     private native int writeEncrypted(byte[] b, int off, int len) throws IOException;
     private native int shutdownWriteEncrypted() throws IOException;
+    private native X500Principal getInfo(int kind);
 
     private Socket socket;
     private String host;
@@ -401,9 +407,7 @@ public class TlspoolSocket extends SSLSocket implements SSLSession {
         System.err.println("cryptfd: " + cryptfd);
         pos = new PlainOutputStream(plainfd);
         pis = new PlainInputStream(plainfd);
-        if (controlKey != null) {
-            System.err.println("control key length: " + controlKey.length);
-        } else {
+        if (controlKey == null) {
             System.err.println("control key is null");
         }
     }
