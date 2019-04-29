@@ -1,7 +1,6 @@
 add_jar(tlspoolsocket
 	src/main/java/nl/mansoft/tlspoolsocket/TlspoolSocket.java
 	src/main/java/nl/mansoft/tlspoolsocket/TlspoolSSLSocketFactory.java
-	src/main/java/nl/mansoft/tlspoolsocket/TestSSL.java
 	GENERATE_NATIVE_HEADERS tlspoolsocket-headers)
 add_library(tlspooljni SHARED
 	src/main/cpp/nl_mansoft_tlspoolsocket_TlspoolSocket.cpp

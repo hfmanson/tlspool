@@ -7,3 +7,6 @@ build
 .kdev4
 tlspool.kdev4
 etc/root.key
+/lib/java/tlspool/nbproject/private/
+/lib/java/Tlspool/nbproject/private/
+/lib/java/Tlspool/dist/
