@@ -88,21 +88,35 @@ public class TlspoolSocket extends SSLSocket implements SSLSession {
         }
     }
 
-    @Override
-    public void startHandshake() throws IOException {
+    public void startHandshake(int flags, String localid, String remoteid) throws IOException {
         startTls(
-            TlspoolSocket.PIOF_STARTTLS_LOCALROLE_CLIENT | TlspoolSocket.PIOF_STARTTLS_REMOTEROLE_SERVER,
+            flags,
             0,
-            TlspoolSocket.IPPROTO_TCP,
+            IPPROTO_TCP,
             0,
-            "testcli@tlspool.arpa2.lab",
-            host,
+            localid,
+            remoteid,
             "generic",
             0
         );
         HandshakeCompletedEvent handshakeCompletedEvent = new HandshakeCompletedEvent(this, this);
         for (HandshakeCompletedListener handshakeCompletedListener : listeners) {
             handshakeCompletedListener.handshakeCompleted(handshakeCompletedEvent);
+        }
+    }
+
+    @Override
+    public void startHandshake() throws IOException {
+        if (host == null) {
+            startHandshake(
+                PIOF_STARTTLS_LOCALROLE_SERVER | PIOF_STARTTLS_REMOTEROLE_CLIENT,
+                "testsrv@tlspool.arpa2.lab",
+                "");
+        } else {
+            startHandshake(
+                PIOF_STARTTLS_LOCALROLE_CLIENT | PIOF_STARTTLS_REMOTEROLE_SERVER,
+                "testcli@tlspool.arpa2.lab",
+                host);
         }
     }
 
@@ -296,10 +310,10 @@ public class TlspoolSocket extends SSLSocket implements SSLSession {
     private native int shutdownWriteEncrypted() throws IOException;
     private native X500Principal getInfo(int kind);
 
-    private Socket socket;
-    private String host;
-    private int port;
-    private boolean autoClose;
+    private final Socket socket;
+    private final String host;
+    private final int port;
+    private final boolean autoClose;
     private PlainOutputStream pos;
     private PlainInputStream pis;
     private int plainfd;
@@ -307,7 +321,8 @@ public class TlspoolSocket extends SSLSocket implements SSLSession {
     private Thread readEncryptedThread;
     private Thread writeEncryptedThread;
     private byte[] controlKey;
-    private Set<HandshakeCompletedListener> listeners;
+    private final Set<HandshakeCompletedListener> listeners;
+
     public TlspoolSocket(Socket socket, String host, int port, boolean autoClose) {
         plainfd = -1;
         cryptfd = -1;
@@ -315,7 +330,7 @@ public class TlspoolSocket extends SSLSocket implements SSLSession {
         this.host = host;
         this.port = port;
         this.autoClose = autoClose;
-        listeners = new HashSet<HandshakeCompletedListener>();
+        listeners = new HashSet<>();
     }
 
     @Override

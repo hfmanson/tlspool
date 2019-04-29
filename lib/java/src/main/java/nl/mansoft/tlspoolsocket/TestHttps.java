@@ -71,7 +71,7 @@ public class TestHttps {
 			direct(urlConnection.getInputStream());
 			urlConnection.disconnect();
 		} catch (Exception ex) {
-			Logger.getLogger(TestSSL.class.getName()).log(Level.SEVERE, null, ex);
+			Logger.getLogger(ChatClient.class.getName()).log(Level.SEVERE, null, ex);
 		}
 	}
 
