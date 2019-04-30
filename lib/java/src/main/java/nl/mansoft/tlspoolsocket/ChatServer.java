@@ -17,8 +17,7 @@ import javax.net.ssl.SSLSocket;
  * @author hfman
  */
 public class ChatServer {
-    public void chat() throws Exception {
-        int port = 12346;
+    public void chat(int port) throws Exception {
         SSLServerSocketFactory factory = new TlspoolSSLServerSocketFactory();
         SSLServerSocket sslServerSocket = (SSLServerSocket) factory.createServerSocket(port);
         String line;
@@ -45,6 +44,10 @@ public class ChatServer {
     }
 
     public static void main(String[] args) throws Exception {
-        new ChatServer().chat();
+        if (args.length != 1) {
+            System.err.println("Usage: ChatServer <port>");
+        }
+        int port = Integer.parseInt(args[0]);
+        new ChatServer().chat(port);
     }
 }

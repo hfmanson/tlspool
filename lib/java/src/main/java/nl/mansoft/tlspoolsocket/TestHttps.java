@@ -63,10 +63,11 @@ public class TestHttps {
 				}
 			}
 			urlConnection.connect();
-//			if (urlConnection instanceof HttpsURLConnection) {
-//				HttpsURLConnection httpsURLConnection = (HttpsURLConnection) urlConnection;
+			if (urlConnection instanceof HttpsURLConnection) {
+				HttpsURLConnection httpsURLConnection = (HttpsURLConnection) urlConnection;
+                System.out.println("peer principal: " + httpsURLConnection.getPeerPrincipal());
 //				printCertificates(httpsURLConnection);
-//			}
+			}
 			printResponseHeaders(urlConnection.getHeaderFields());
 			direct(urlConnection.getInputStream());
 			urlConnection.disconnect();

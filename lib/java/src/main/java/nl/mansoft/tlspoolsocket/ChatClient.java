@@ -10,10 +10,7 @@ import javax.net.ssl.SSLSocketFactory;
 public class ChatClient {
     private SSLSocket sslSocket;
 
-    public void chat() throws Exception {
-        String host = "localhost";
-        String remoteid = "testsrv@tlspool.arpa2.lab";
-        int port = 12345;
+    public void chat(String host, String remoteid, int port) throws Exception {
         Socket socket = new Socket(host, port);
         SSLSocketFactory factory = new TlspoolSSLSocketFactory();
         sslSocket = (SSLSocket) factory.createSocket(socket, remoteid, port, true);
@@ -38,6 +35,12 @@ public class ChatClient {
     }
 
     public static void main(String[] args) throws Exception {
-        new ChatClient().chat();
+        if (args.length != 3) {
+            System.err.println("Usage: ChatClient <remoteid> <remote ip> <port>");
+        }
+        String remoteid = args[0];
+        String host = args[1];
+        int port = Integer.parseInt(args[2]);
+        new ChatClient().chat(host, remoteid, port);
     }
 }
