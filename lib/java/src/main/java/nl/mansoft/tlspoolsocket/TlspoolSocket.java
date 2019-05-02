@@ -37,7 +37,7 @@ public class TlspoolSocket extends SSLSocket implements SSLSession {
     public static final int PIOK_INFO_MYCERT_ISSUER			= 0x52800101;
 
     static {
-        System.loadLibrary("libtlspooljni");
+        System.loadLibrary("tlspooljni");
     }
 
     @Override
