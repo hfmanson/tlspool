@@ -402,6 +402,7 @@ public class TlspoolSocket extends SSLSocket implements SSLSession {
                         } else {
                             int bytesRead = readEncrypted(buf, 0, buf.length);
                             if (bytesRead <= 0) {
+                                socket.shutdownOutput();
                                 System.err.println("EXIT: writeEncryptedThread");
                                 return;
                             }
